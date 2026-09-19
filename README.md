@@ -7,6 +7,59 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## A&M Sports Control
+
+Backend Laravel de contabilidad para bancas deportivas. La API de producción usa:
+
+```text
+https://amsport.bsolutions.dev/api/v1/
+```
+
+### Cambios actuales
+
+- Autenticación Sanctum y contabilidad por empresa activa.
+- Cobros, adelantos, libro mayor y caja chica con operaciones idempotentes.
+- Cuadre semanal por banca con ventas, premios pagados y efectivo entregado.
+- Fórmula del cuadre: `ventas - premios + efectivo entregado`.
+- Cada cuadre crea asientos contables y el efectivo entregado crea una salida de caja.
+- La misma banca no puede registrar dos veces el mismo período semanal.
+
+### Endpoints del cuadre semanal
+
+- `GET /api/v1/weekly-settlements?branch_id={id}`
+- `POST /api/v1/weekly-settlements`
+
+El `POST` requiere el header `Idempotency-Key` como UUID y estos campos:
+
+```json
+{
+  "branch_id": 1,
+  "week_start": "2026-09-14",
+  "week_end": "2026-09-20",
+  "sales_amount": "6000.00",
+  "prizes_amount": "3000.00",
+  "cash_delivered_amount": "2000.00",
+  "notes": "Opcional"
+}
+```
+
+### Verificación local
+
+```powershell
+php artisan test
+```
+
+### Pendiente de producción
+
+El código y la migración `2026_09_19_100000_create_weekly_settlements_table` están preparados para desplegarse. La migración debe ejecutarse sobre `amsport_api` con una cuenta que tenga permisos DDL para crear tablas y claves foráneas; la cuenta de aplicación actual sólo tiene permisos de lectura/escritura y por eso la migración quedó pendiente en el VPS.
+
+Después de habilitar temporalmente esos permisos o usar una cuenta administrativa, ejecutar únicamente sobre este proyecto:
+
+```powershell
+C:\xampp\php\php.exe C:\xampp\htdocs\amsport-api\artisan migrate --force
+C:\xampp\php\php.exe C:\xampp\htdocs\amsport-api\artisan optimize
+```
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:

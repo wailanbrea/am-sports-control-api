@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\BranchController;
 use App\Http\Controllers\Api\V1\CashBoxController;
 use App\Http\Controllers\Api\V1\CollectionController;
 use App\Http\Controllers\Api\V1\LedgerEntryController;
+use App\Http\Controllers\Api\V1\WeeklySettlementController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/auth')->group(function () {
@@ -33,5 +34,7 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     Route::post('/collections', [CollectionController::class, 'store']);
     Route::get('/advances', [AdvanceController::class, 'index']);
     Route::post('/advances', [AdvanceController::class, 'store']);
+    Route::get('/weekly-settlements', [WeeklySettlementController::class, 'index']);
+    Route::post('/weekly-settlements', [WeeklySettlementController::class, 'store']);
     Route::post('/ledger-entries/{ledgerEntry}/reverse', [LedgerEntryController::class, 'reverse']);
 });

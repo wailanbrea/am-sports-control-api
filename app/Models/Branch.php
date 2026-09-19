@@ -34,4 +34,9 @@ class Branch extends Model
     {
         return $this->hasMany(LedgerEntry::class);
     }
+
+    public function weeklySettlements(): HasMany
+    {
+        return $this->hasMany(WeeklySettlement::class);
+    }
 }

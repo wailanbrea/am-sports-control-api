@@ -30,6 +30,7 @@ class AccountingReadController extends Controller
             ->with([
                 'collections' => fn ($query) => $query->orderByDesc('business_date')->orderByDesc('id'),
                 'advances' => fn ($query) => $query->orderByDesc('business_date')->orderByDesc('id'),
+                'weeklySettlements' => fn ($query) => $query->orderByDesc('week_end')->orderByDesc('id'),
                 'ledger' => fn ($query) => $query->orderByDesc('business_date')->orderByDesc('id'),
             ])
             ->findOrFail($branch);
