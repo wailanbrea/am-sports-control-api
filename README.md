@@ -49,11 +49,11 @@ El `POST` requiere el header `Idempotency-Key` como UUID y estos campos:
 php artisan test
 ```
 
-### Pendiente de producción
+### Estado de producción
 
-El código y la migración `2026_09_19_100000_create_weekly_settlements_table` están preparados para desplegarse. La migración debe ejecutarse sobre `amsport_api` con una cuenta que tenga permisos DDL para crear tablas y claves foráneas; la cuenta de aplicación actual sólo tiene permisos de lectura/escritura y por eso la migración quedó pendiente en el VPS.
+El commit `a585786` está desplegado en `C:\xampp\htdocs\amsport-api`. La migración `2026_09_19_100000_create_weekly_settlements_table` se ejecutó correctamente sobre `amsport_api` en el batch `[2]`. Los permisos DDL temporales fueron revocados y la cuenta de aplicación conserva sólo permisos de lectura/escritura.
 
-Después de habilitar temporalmente esos permisos o usar una cuenta administrativa, ejecutar únicamente sobre este proyecto:
+Para futuras migraciones que requieran DDL, usar una cuenta administrativa o conceder permisos temporales únicamente sobre `amsport_api`, y revocarlos después. Ejecutar únicamente sobre este proyecto:
 
 ```powershell
 C:\xampp\php\php.exe C:\xampp\htdocs\amsport-api\artisan migrate --force
