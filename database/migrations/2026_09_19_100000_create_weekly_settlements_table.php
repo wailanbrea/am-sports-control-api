@@ -8,6 +8,19 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('weekly_settlements')) {
+            Schema::table('weekly_settlements', function (Blueprint $table) {
+                $table->unique(
+                    ['company_id', 'branch_id', 'week_start', 'week_end'],
+                    'weekly_settlements_period_unique'
+                );
+                $table->unique(['company_id', 'idempotency_key'], 'weekly_settlements_idempotency_unique');
+                $table->index(['company_id', 'week_start', 'week_end'], 'weekly_settlements_period_index');
+            });
+
+            return;
+        }
+
         Schema::create('weekly_settlements', function (Blueprint $table) {
             $table->id();
             $table->foreignId('company_id')->constrained()->cascadeOnDelete();
@@ -25,9 +38,12 @@ return new class extends Migration
             $table->uuid('idempotency_key');
             $table->foreignId('created_by')->constrained('users')->restrictOnDelete();
             $table->timestamps();
-            $table->unique(['company_id', 'branch_id', 'week_start', 'week_end']);
-            $table->unique(['company_id', 'idempotency_key']);
-            $table->index(['company_id', 'week_start', 'week_end']);
+            $table->unique(
+                ['company_id', 'branch_id', 'week_start', 'week_end'],
+                'weekly_settlements_period_unique'
+            );
+            $table->unique(['company_id', 'idempotency_key'], 'weekly_settlements_idempotency_unique');
+            $table->index(['company_id', 'week_start', 'week_end'], 'weekly_settlements_period_index');
         });
     }
 
