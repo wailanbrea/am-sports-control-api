@@ -23,6 +23,8 @@ https://amsport.bsolutions.dev/api/v1/
 - Comisión configurable, con `20%` como valor predeterminado en Android.
 - Fórmula del cuadre: `ventas - premios - comisión + efectivo entregado`.
 - Cada cuadre crea asientos contables y el efectivo entregado crea una salida de caja.
+- Los cobros parciales conservan el saldo pendiente y actualizan el estado del último cuadre.
+- Las transferencias a una banca actualizan caja, libro mayor y balance acumulado de la banca.
 - La misma banca no puede registrar dos veces el mismo período semanal.
 
 ### Endpoints del cuadre semanal

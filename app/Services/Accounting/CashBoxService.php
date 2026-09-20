@@ -6,7 +6,9 @@ use App\Models\Branch;
 use App\Models\CashMovement;
 use App\Models\Company;
 use App\Models\IdempotencyKey;
+use App\Models\LedgerEntry;
 use App\Models\User;
+use App\Models\WeeklySettlement;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -67,6 +69,7 @@ class CashBoxService
             }
 
             $branchId = $data['branch_id'] ?? null;
+            $branch = null;
             if ($movementType === 'branch_transfer') {
                 $branch = Branch::query()
                     ->where('company_id', $companyId)
@@ -98,6 +101,41 @@ class CashBoxService
             ]);
 
             $company->update(['cash_balance' => $balanceAfter]);
+
+            if ($movementType === 'branch_transfer' && ($data['adjust_branch_balance'] ?? true)) {
+                $branchBalanceBefore = (string) $branch->current_balance;
+                $branchBalanceAfter = bcadd($branchBalanceBefore, $amount, 2);
+                LedgerEntry::query()->create([
+                    'company_id' => $companyId,
+                    'branch_id' => $branch->id,
+                    'source_type' => CashMovement::class,
+                    'source_id' => $movement->id,
+                    'entry_type' => 'branch_support_payment',
+                    'signed_amount' => $amount,
+                    'balance_before' => $branchBalanceBefore,
+                    'balance_after' => $branchBalanceAfter,
+                    'business_date' => $data['business_date'],
+                    'description' => 'Dinero entregado a la banca',
+                    'created_by' => $user->id,
+                ]);
+                $branch->update(['current_balance' => $branchBalanceAfter]);
+
+                $latestSettlement = WeeklySettlement::query()
+                    ->where('company_id', $companyId)
+                    ->where('branch_id', $branch->id)
+                    ->orderByDesc('week_end')
+                    ->orderByDesc('id')
+                    ->first();
+                if ($latestSettlement) {
+                    $latestSettlement->update([
+                        'status' => match (bccomp($branchBalanceAfter, '0.00', 2)) {
+                            -1 => 'negative_balance',
+                            0 => 'compensated',
+                            default => 'pending',
+                        },
+                    ]);
+                }
+            }
 
             if ($operation && $idempotencyKey) {
                 IdempotencyKey::query()->create([

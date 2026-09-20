@@ -89,7 +89,11 @@ class WeeklySettlementService
                 'balance_before' => $balanceBefore,
                 'balance_after' => $balanceAfter,
                 'notes' => $data['notes'] ?? null,
-                'status' => 'confirmed',
+                'status' => match (bccomp($balanceAfter, '0.00', 2)) {
+                    -1 => 'negative_balance',
+                    0 => 'settled',
+                    default => 'pending',
+                },
                 'idempotency_key' => $idempotencyKey,
                 'created_by' => $user->id,
             ]);
@@ -117,6 +121,7 @@ class WeeklySettlementService
                         'branch_id' => $branch->id,
                         'reference' => 'Cuadre semanal #'.$settlement->id,
                         'notes' => $data['notes'] ?? null,
+                        'adjust_branch_balance' => false,
                     ],
                     sourceType: WeeklySettlement::class,
                     sourceId: $settlement->id,

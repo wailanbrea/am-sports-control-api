@@ -7,6 +7,7 @@ use App\Models\Collection;
 use App\Models\IdempotencyKey;
 use App\Models\LedgerEntry;
 use App\Models\User;
+use App\Models\WeeklySettlement;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -79,6 +80,18 @@ class CollectionService
             ]);
 
             $branch->update(['current_balance' => $balanceAfter]);
+
+            $latestSettlement = WeeklySettlement::query()
+                ->where('company_id', $companyId)
+                ->where('branch_id', $branch->id)
+                ->orderByDesc('week_end')
+                ->orderByDesc('id')
+                ->first();
+            if ($latestSettlement) {
+                $latestSettlement->update([
+                    'status' => bccomp($balanceAfter, '0.00', 2) === 0 ? 'paid' : 'partially_paid',
+                ]);
+            }
 
             if ($data['payment_method'] === 'cash') {
                 app(CashBoxService::class)->record(

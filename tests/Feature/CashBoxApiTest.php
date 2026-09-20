@@ -75,6 +75,14 @@ class CashBoxApiTest extends TestCase
             ->assertJsonPath('data.signed_amount', '-35.00');
 
         $this->assertSame('65.00', $company->fresh()->cash_balance);
+        $this->assertSame('35.00', $branch->fresh()->current_balance);
+        $this->assertDatabaseHas('ledger_entries', [
+            'branch_id' => $branch->id,
+            'entry_type' => 'branch_support_payment',
+            'signed_amount' => '35.00',
+            'balance_before' => '0.00',
+            'balance_after' => '35.00',
+        ]);
     }
 
     public function test_cash_box_is_scoped_to_the_active_company(): void
@@ -97,6 +105,30 @@ class CashBoxApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.current_balance', '20.00')
             ->assertJsonCount(0, 'data.entries');
+    }
+
+    public function test_transfer_to_negative_branch_compensates_its_accumulated_balance(): void
+    {
+        [$user, $company, $branch] = $this->context('1000.00');
+        $branch->update(['current_balance' => '-450.00']);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/cash-box/branch-transfers', [
+            'branch_id' => $branch->id,
+            'amount' => '300.00',
+            'business_date' => '2026-09-19',
+            'reason' => 'Completar premios',
+        ], ['Idempotency-Key' => 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'])
+            ->assertCreated();
+
+        $this->assertSame('-150.00', $branch->fresh()->current_balance);
+        $this->assertSame('700.00', $company->fresh()->cash_balance);
+        $this->assertDatabaseHas('ledger_entries', [
+            'branch_id' => $branch->id,
+            'entry_type' => 'branch_support_payment',
+            'signed_amount' => '300.00',
+            'balance_before' => '-450.00',
+            'balance_after' => '-150.00',
+        ]);
     }
 
     public function test_cash_collection_creates_one_movement_on_idempotent_retry_but_transfer_does_not(): void

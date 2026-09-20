@@ -28,7 +28,8 @@ class WeeklySettlementApiTest extends TestCase
             ->assertJsonPath('data.commission_amount', '1200.00')
             ->assertJsonPath('data.weekly_balance', '3800.00')
             ->assertJsonPath('data.balance_before', '5000.00')
-            ->assertJsonPath('data.balance_after', '8800.00');
+            ->assertJsonPath('data.balance_after', '8800.00')
+            ->assertJsonPath('data.status', 'pending');
 
         $this->assertSame('8800.00', $branch->fresh()->current_balance);
         $this->assertSame('18000.00', $company->fresh()->cash_balance);
@@ -98,6 +99,28 @@ class WeeklySettlementApiTest extends TestCase
         ], ['Idempotency-Key' => 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('commission_rate');
+    }
+
+    public function test_partial_collection_preserves_balance_and_marks_latest_settlement_partial(): void
+    {
+        [$user, , $branch] = $this->context();
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/weekly-settlements', $this->payload($branch->id), [
+            'Idempotency-Key' => 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        ])->assertCreated();
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/collections', [
+            'branch_id' => $branch->id,
+            'amount' => '2000.00',
+            'business_date' => '2026-09-21',
+            'payment_method' => 'transfer',
+        ], ['Idempotency-Key' => 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'])
+            ->assertCreated();
+
+        $this->assertSame('6800.00', $branch->fresh()->current_balance);
+        $this->assertDatabaseHas('weekly_settlements', [
+            'branch_id' => $branch->id,
+            'status' => 'partially_paid',
+        ]);
     }
 
     /** @return array{User, Company, Branch} */
