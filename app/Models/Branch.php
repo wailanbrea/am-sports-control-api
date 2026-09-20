@@ -12,6 +12,7 @@ class Branch extends Model
         'company_id',
         'code',
         'name',
+        'phone',
         'owner_name',
         'owner_phone',
         'owner_whatsapp',

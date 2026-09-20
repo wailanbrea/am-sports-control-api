@@ -74,6 +74,7 @@ class BranchController extends Controller
         return [
             'code' => ['required', 'string', 'max:100', $uniqueCode],
             'name' => ['required', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
             'description' => ['nullable', 'string', 'max:2000'],
             'route' => ['nullable', 'string', 'max:255'],
             'operator_name' => ['nullable', 'string', 'max:255'],
