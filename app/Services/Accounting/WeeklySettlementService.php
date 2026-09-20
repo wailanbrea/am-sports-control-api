@@ -55,6 +55,13 @@ class WeeklySettlementService
 
             $sales = $this->normalizeAmount($data['sales_amount']);
             $prizes = $this->normalizeAmount($data['prizes_amount']);
+            $commissionRate = $this->normalizeAmount($data['commission_rate']);
+            if (bccomp($commissionRate, '100.00', 2) > 0) {
+                throw ValidationException::withMessages([
+                    'commission_rate' => ['El porcentaje de comisión no puede ser mayor que 100.'],
+                ]);
+            }
+            $commission = $this->roundAmount(bcdiv(bcmul($sales, $commissionRate, 4), '100', 4));
             $cashDelivered = $this->normalizeAmount($data['cash_delivered_amount']);
             if (bccomp($sales, '0.00', 2) === 0
                 && bccomp($prizes, '0.00', 2) === 0
@@ -64,7 +71,7 @@ class WeeklySettlementService
                 ]);
             }
 
-            $weeklyBalance = bcadd(bcsub($sales, $prizes, 2), $cashDelivered, 2);
+            $weeklyBalance = bcadd(bcsub(bcsub($sales, $prizes, 2), $commission, 2), $cashDelivered, 2);
             $balanceBefore = (string) $branch->current_balance;
             $balanceAfter = bcadd($balanceBefore, $weeklyBalance, 2);
 
@@ -75,6 +82,8 @@ class WeeklySettlementService
                 'week_end' => $data['week_end'],
                 'sales_amount' => $sales,
                 'prizes_amount' => $prizes,
+                'commission_rate' => $commissionRate,
+                'commission_amount' => $commission,
                 'cash_delivered_amount' => $cashDelivered,
                 'weekly_balance' => $weeklyBalance,
                 'balance_before' => $balanceBefore,
@@ -90,6 +99,8 @@ class WeeklySettlementService
             $runningBalance = bcadd($runningBalance, $sales, 2);
             $this->createEntry($settlement, $user, bcmul($prizes, '-1', 2), $runningBalance, 'weekly_prizes', 'Premios pagados registrados');
             $runningBalance = bcsub($runningBalance, $prizes, 2);
+            $this->createEntry($settlement, $user, bcmul($commission, '-1', 2), $runningBalance, 'weekly_commission', 'Comisión semanal de la banca');
+            $runningBalance = bcsub($runningBalance, $commission, 2);
             $this->createEntry($settlement, $user, $cashDelivered, $runningBalance, 'weekly_cash_delivered', 'Efectivo entregado a la banca');
 
             $branch->update(['current_balance' => $balanceAfter]);
@@ -164,5 +175,10 @@ class WeeklySettlementService
         [$whole, $fraction] = array_pad(explode('.', $amount, 2), 2, '');
 
         return (ltrim($whole, '0') ?: '0').'.'.str_pad($fraction, 2, '0');
+    }
+
+    private function roundAmount(string $amount): string
+    {
+        return bcdiv(bcadd($amount, '0.005', 3), '1', 2);
     }
 }

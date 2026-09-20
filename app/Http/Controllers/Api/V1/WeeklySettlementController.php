@@ -38,6 +38,7 @@ class WeeklySettlementController extends Controller
             'week_end' => ['required', 'date', 'after_or_equal:week_start'],
             'sales_amount' => ['required', 'string', 'regex:/^\d+(?:\.\d{1,2})?$/'],
             'prizes_amount' => ['required', 'string', 'regex:/^\d+(?:\.\d{1,2})?$/'],
+            'commission_rate' => ['required', 'string', 'regex:/^\d{1,3}(?:\.\d{1,2})?$/'],
             'cash_delivered_amount' => ['required', 'string', 'regex:/^\d+(?:\.\d{1,2})?$/'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);

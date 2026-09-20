@@ -20,7 +20,8 @@ https://amsport.bsolutions.dev/api/v1/
 - Autenticación Sanctum y contabilidad por empresa activa.
 - Cobros, adelantos, libro mayor y caja chica con operaciones idempotentes.
 - Cuadre semanal por banca con ventas, premios pagados y efectivo entregado.
-- Fórmula del cuadre: `ventas - premios + efectivo entregado`.
+- Comisión configurable, con `20%` como valor predeterminado en Android.
+- Fórmula del cuadre: `ventas - premios - comisión + efectivo entregado`.
 - Cada cuadre crea asientos contables y el efectivo entregado crea una salida de caja.
 - La misma banca no puede registrar dos veces el mismo período semanal.
 
@@ -38,6 +39,7 @@ El `POST` requiere el header `Idempotency-Key` como UUID y estos campos:
   "week_end": "2026-09-20",
   "sales_amount": "6000.00",
   "prizes_amount": "3000.00",
+  "commission_rate": "20.00",
   "cash_delivered_amount": "2000.00",
   "notes": "Opcional"
 }

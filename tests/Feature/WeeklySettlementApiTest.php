@@ -24,13 +24,19 @@ class WeeklySettlementApiTest extends TestCase
                 'Idempotency-Key' => '77777777-7777-4777-8777-777777777777',
             ])
             ->assertCreated()
-            ->assertJsonPath('data.weekly_balance', '5000.00')
+            ->assertJsonPath('data.commission_rate', '20.00')
+            ->assertJsonPath('data.commission_amount', '1200.00')
+            ->assertJsonPath('data.weekly_balance', '3800.00')
             ->assertJsonPath('data.balance_before', '5000.00')
-            ->assertJsonPath('data.balance_after', '10000.00');
+            ->assertJsonPath('data.balance_after', '8800.00');
 
-        $this->assertSame('10000.00', $branch->fresh()->current_balance);
+        $this->assertSame('8800.00', $branch->fresh()->current_balance);
         $this->assertSame('18000.00', $company->fresh()->cash_balance);
-        $this->assertDatabaseCount('ledger_entries', 3);
+        $this->assertDatabaseCount('ledger_entries', 4);
+        $this->assertDatabaseHas('ledger_entries', [
+            'entry_type' => 'weekly_commission',
+            'signed_amount' => '-1200.00',
+        ]);
         $this->assertDatabaseHas('cash_movements', [
             'movement_type' => 'branch_transfer',
             'amount' => '2000.00',
@@ -50,7 +56,7 @@ class WeeklySettlementApiTest extends TestCase
             ->assertJsonPath('data.id', 1);
 
         $this->assertDatabaseCount('weekly_settlements', 1);
-        $this->assertDatabaseCount('ledger_entries', 3);
+        $this->assertDatabaseCount('ledger_entries', 4);
         $this->assertDatabaseCount('cash_movements', 1);
     }
 
@@ -82,6 +88,18 @@ class WeeklySettlementApiTest extends TestCase
             ->assertJsonValidationErrors('sales_amount');
     }
 
+    public function test_commission_rate_cannot_exceed_one_hundred_percent(): void
+    {
+        [$user, , $branch] = $this->context();
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/weekly-settlements', [
+            ...$this->payload($branch->id),
+            'commission_rate' => '100.01',
+        ], ['Idempotency-Key' => 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('commission_rate');
+    }
+
     /** @return array{User, Company, Branch} */
     private function context(): array
     {
@@ -106,6 +124,7 @@ class WeeklySettlementApiTest extends TestCase
             'week_end' => '2026-09-20',
             'sales_amount' => '6000.00',
             'prizes_amount' => '3000.00',
+            'commission_rate' => '20.00',
             'cash_delivered_amount' => '2000.00',
         ];
     }
