@@ -53,19 +53,56 @@ class AccountingReadController extends Controller
     {
         $companyId = $this->activeCompanyId($request);
         $company = Company::query()->findOrFail($companyId);
-        $branchBalances = Branch::query()
+        $branches = Branch::query()
             ->where('company_id', $companyId)
-            ->pluck('current_balance');
+            ->where('status', 'active')
+            ->get(['id', 'current_balance']);
+
         $receivableTotal = '0.00';
         $branchCreditTotal = '0.00';
+        $positiveCount = 0;
+        $negativeCount = 0;
+        $zeroCount = 0;
 
-        foreach ($branchBalances as $balance) {
-            if (bccomp($balance, '0', 2) > 0) {
+        foreach ($branches as $branch) {
+            $balance = (string) $branch->current_balance;
+            $cmp = bccomp($balance, '0', 2);
+            if ($cmp > 0) {
                 $receivableTotal = bcadd($receivableTotal, $balance, 2);
-            } elseif (bccomp($balance, '0', 2) < 0) {
+                $positiveCount++;
+            } elseif ($cmp < 0) {
                 $branchCreditTotal = bcadd($branchCreditTotal, bcmul($balance, '-1', 2), 2);
+                $negativeCount++;
+            } else {
+                $zeroCount++;
             }
         }
+
+        $now = \Illuminate\Support\Carbon::now();
+        $startOfWeek = $now->copy()->startOfWeek()->toDateString();
+        $endOfWeek = $now->copy()->endOfWeek()->toDateString();
+        $startOfMonth = $now->copy()->startOfMonth()->toDateString();
+        $endOfMonth = $now->copy()->endOfMonth()->toDateString();
+
+        $moneyDeliveredWeek = (string) (\App\Models\MoneyDelivery::query()
+            ->where('company_id', $companyId)
+            ->whereBetween('business_date', [$startOfWeek, $endOfWeek])
+            ->sum('delivered_amount') ?: '0.00');
+
+        $moneyDeliveredMonth = (string) (\App\Models\MoneyDelivery::query()
+            ->where('company_id', $companyId)
+            ->whereBetween('business_date', [$startOfMonth, $endOfMonth])
+            ->sum('delivered_amount') ?: '0.00');
+
+        $collectedWeek = (string) (Collection::query()
+            ->where('company_id', $companyId)
+            ->whereBetween('business_date', [$startOfWeek, $endOfWeek])
+            ->sum('amount') ?: '0.00');
+
+        $collectedMonth = (string) (Collection::query()
+            ->where('company_id', $companyId)
+            ->whereBetween('business_date', [$startOfMonth, $endOfMonth])
+            ->sum('amount') ?: '0.00');
 
         $recentActivity = LedgerEntry::query()
             ->where('company_id', $companyId)
@@ -82,6 +119,28 @@ class AccountingReadController extends Controller
             'advances_total' => $this->total(Advance::class, $companyId),
             'currency_code' => $company->currency_code ?: 'USD',
             'cash_balance' => $company->cash_balance,
+            'active_branches_count' => $branches->count(),
+            'positive_branches_count' => $positiveCount,
+            'negative_branches_count' => $negativeCount,
+            'zero_branches_count' => $zeroCount,
+            'total_pending_to_collect' => $receivableTotal,
+            'total_to_collect_next_monday' => $receivableTotal,
+            'total_money_delivered_this_week' => $moneyDeliveredWeek,
+            'total_money_delivered_this_month' => $moneyDeliveredMonth,
+            'total_collected_this_week' => $collectedWeek,
+            'total_collected_this_month' => $collectedMonth,
+            'alerts' => [
+                'negative_branches' => [
+                    'count' => $negativeCount,
+                    'total_required' => $branchCreditTotal,
+                    'message' => "{$negativeCount} bancas requieren dinero.",
+                ],
+                'pending_collections' => [
+                    'count' => $positiveCount,
+                    'total_to_collect' => $receivableTotal,
+                    'message' => "{$positiveCount} bancas con saldo por cobrar (Total: {$receivableTotal}).",
+                ],
+            ],
             'recent_activity' => $recentActivity,
         ]);
     }
