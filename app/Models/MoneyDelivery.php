@@ -12,6 +12,9 @@ class MoneyDelivery extends Model
         'branch_id',
         'manual_result_id',
         'suggested_amount',
+        'gross_amount',
+        'commission_rate',
+        'commission_amount',
         'delivered_amount',
         'business_date',
         'reason',
@@ -25,6 +28,9 @@ class MoneyDelivery extends Model
     {
         return [
             'suggested_amount' => 'decimal:2',
+            'gross_amount' => 'decimal:2',
+            'commission_rate' => 'decimal:2',
+            'commission_amount' => 'decimal:2',
             'delivered_amount' => 'decimal:2',
             'business_date' => 'date',
         ];

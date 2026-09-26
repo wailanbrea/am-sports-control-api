@@ -94,6 +94,7 @@ class BranchController extends Controller
             'latitude' => ['nullable', 'numeric'],
             'longitude' => ['nullable', 'numeric'],
             'collection_day' => ['nullable', 'string', 'max:50'],
+            'commission_rate' => ['nullable', 'numeric', 'between:0,100'],
             'status' => ['required', 'in:active,inactive'],
         ];
     }

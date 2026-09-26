@@ -34,6 +34,7 @@ class Branch extends Model
         'operator_name',
         'status',
         'current_balance',
+        'commission_rate',
         'created_by',
     ];
 
@@ -41,6 +42,7 @@ class Branch extends Model
     {
         return [
             'current_balance' => 'decimal:2',
+            'commission_rate' => 'decimal:2',
             'latitude' => 'decimal:7',
             'longitude' => 'decimal:7',
         ];

@@ -23,6 +23,7 @@ class BranchApiTest extends TestCase
             'description' => 'Ruta norte',
             'route' => 'Norte',
             'operator_name' => 'Ana Perez',
+            'commission_rate' => '10.00',
             'status' => 'active',
             'current_balance' => '999.99',
         ]);
@@ -31,9 +32,10 @@ class BranchApiTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.company_id', $company->id)
             ->assertJsonPath('data.current_balance', '0.00')
+            ->assertJsonPath('data.commission_rate', '10.00')
             ->assertJsonPath('data.route', 'Norte')
             ->assertJsonPath('data.operator_name', 'Ana Perez');
-        $this->assertDatabaseHas('branches', ['company_id' => $company->id, 'code' => 'B-02', 'current_balance' => '0.00']);
+        $this->assertDatabaseHas('branches', ['company_id' => $company->id, 'code' => 'B-02', 'current_balance' => '0.00', 'commission_rate' => '10.00']);
     }
 
     public function test_branch_update_changes_only_allowed_fields(): void
@@ -47,12 +49,14 @@ class BranchApiTest extends TestCase
             'description' => null,
             'route' => null,
             'operator_name' => 'Luis Diaz',
+            'commission_rate' => '5.00',
             'status' => 'inactive',
             'current_balance' => '0.00',
         ])->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.code', 'B-03')
             ->assertJsonPath('data.current_balance', '25.00')
+            ->assertJsonPath('data.commission_rate', '5.00')
             ->assertJsonPath('data.status', 'inactive');
     }
 

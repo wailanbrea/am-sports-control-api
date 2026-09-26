@@ -90,6 +90,9 @@ class MoneyDeliveryController extends Controller
         $data = $request->validate([
             'branch_id' => ['required', 'integer'],
             'amount' => ['required', 'numeric', 'min:0.01'],
+            'gross_amount' => ['nullable', 'numeric', 'min:0.01'],
+            'commission_rate' => ['nullable', 'numeric', 'between:0,100'],
+            'commission_amount' => ['nullable', 'numeric', 'min:0'],
             'suggested_amount' => ['nullable', 'numeric'],
             'manual_result_id' => ['nullable', 'integer'],
             'business_date' => ['required', 'date'],

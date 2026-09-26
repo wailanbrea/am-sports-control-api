@@ -48,9 +48,25 @@ class MoneyDeliveryService
                 throw ValidationException::withMessages(['amount' => ['El monto entregado debe ser mayor que cero.']]);
             }
 
+            $commissionRate = isset($data['commission_rate']) ? $this->normalizeAmount($data['commission_rate']) : '0.00';
+            $commissionAmount = isset($data['commission_amount']) ? $this->normalizeAmount($data['commission_amount']) : '0.00';
+            $grossAmount = isset($data['gross_amount']) ? $this->normalizeAmount($data['gross_amount']) : '0.00';
+
+            if (bccomp($grossAmount, '0.00', 2) > 0 && bccomp($commissionRate, '0.00', 2) > 0 && bccomp($commissionAmount, '0.00', 2) === 0) {
+                $commissionAmount = number_format((float) $grossAmount * ((float) $commissionRate / 100), 2, '.', '');
+            }
+
+            if (bccomp($grossAmount, '0.00', 2) > 0 && bccomp($amount, $grossAmount, 2) === 0 && bccomp($commissionAmount, '0.00', 2) > 0) {
+                $amount = bcsub($grossAmount, $commissionAmount, 2);
+            }
+
+            if (bccomp($grossAmount, '0.00', 2) === 0) {
+                $grossAmount = bcadd($amount, $commissionAmount, 2);
+            }
+
             $suggestedAmount = isset($data['suggested_amount'])
                 ? $this->normalizeAmount($data['suggested_amount'])
-                : '0.00';
+                : $grossAmount;
 
             $manualResultId = $data['manual_result_id'] ?? null;
             if ($manualResultId) {
@@ -69,6 +85,9 @@ class MoneyDeliveryService
                 'branch_id' => $branch->id,
                 'manual_result_id' => $manualResultId,
                 'suggested_amount' => $suggestedAmount,
+                'gross_amount' => $grossAmount,
+                'commission_rate' => $commissionRate,
+                'commission_amount' => $commissionAmount,
                 'delivered_amount' => $amount,
                 'business_date' => $data['business_date'],
                 'reason' => $data['reason'] ?? 'Cubrir pérdida operativa',
@@ -78,10 +97,11 @@ class MoneyDeliveryService
                 'created_by' => $user->id,
             ]);
 
-            // Compensación en la banca: entregar dinero físico cancela o reduce la pérdida
+            // Compensación en la banca: entregar dinero físico y/o aplicar comisión cancela o reduce la deuda
             $branchBalanceBefore = (string) $branch->current_balance;
-            $branchBalanceAfter = bcadd($branchBalanceBefore, $amount, 2);
+            $runningBalance = $branchBalanceBefore;
 
+            $balanceAfterDelivery = bcadd($runningBalance, $amount, 2);
             LedgerEntry::query()->create([
                 'company_id' => $companyId,
                 'branch_id' => $branch->id,
@@ -89,16 +109,35 @@ class MoneyDeliveryService
                 'source_id' => $delivery->id,
                 'entry_type' => 'money_delivery',
                 'signed_amount' => $amount,
-                'balance_before' => $branchBalanceBefore,
-                'balance_after' => $branchBalanceAfter,
+                'balance_before' => $runningBalance,
+                'balance_after' => $balanceAfterDelivery,
                 'business_date' => $data['business_date'],
                 'description' => 'Dinero llevado a la banca: ' . ($data['reason'] ?? 'Cubrir pérdida'),
                 'created_by' => $user->id,
             ]);
+            $runningBalance = $balanceAfterDelivery;
 
-            $branch->update(['current_balance' => $branchBalanceAfter]);
+            if (bccomp($commissionAmount, '0.00', 2) > 0) {
+                $balanceAfterCommission = bcadd($runningBalance, $commissionAmount, 2);
+                LedgerEntry::query()->create([
+                    'company_id' => $companyId,
+                    'branch_id' => $branch->id,
+                    'source_type' => MoneyDelivery::class,
+                    'source_id' => $delivery->id,
+                    'entry_type' => 'delivery_commission',
+                    'signed_amount' => $commissionAmount,
+                    'balance_before' => $runningBalance,
+                    'balance_after' => $balanceAfterCommission,
+                    'business_date' => $data['business_date'],
+                    'description' => 'Descuento por comisión (' . (float) $commissionRate . '%): ' . ($data['reason'] ?? 'Entrega de dinero'),
+                    'created_by' => $user->id,
+                ]);
+                $runningBalance = $balanceAfterCommission;
+            }
 
-            // Salida física de caja
+            $branch->update(['current_balance' => $runningBalance]);
+
+            // Salida física de caja (solo el efectivo real entregado)
             $company = Company::query()->whereKey($companyId)->lockForUpdate()->firstOrFail();
             $cashBefore = (string) $company->cash_balance;
             $cashAfter = bcsub($cashBefore, $amount, 2);
@@ -130,13 +169,13 @@ class MoneyDeliveryService
                 'response_code' => 201,
                 'response_body' => [
                     'money_delivery_id' => $delivery->id,
-                    'branch_balance_after' => $branchBalanceAfter,
+                    'branch_balance_after' => $runningBalance,
                     'cash_balance_after' => $cashAfter,
                 ],
                 'expires_at' => now()->addHours(24),
             ]);
 
-            $delivery->branch_balance_after = $branchBalanceAfter;
+            $delivery->branch_balance_after = $runningBalance;
 
             return $delivery;
         });

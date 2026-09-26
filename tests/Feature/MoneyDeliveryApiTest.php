@@ -99,6 +99,67 @@ class MoneyDeliveryApiTest extends TestCase
             ->assertJsonPath('data.total_delivered', '4463.00');
     }
 
+    public function test_can_record_money_delivery_with_commission_deduction(): void
+    {
+        [$user, $company] = $this->companyContext('5000.00');
+
+        // Banca en ganancia/deuda -$1000.00
+        $branch = $this->branch($company, 'B-01', '-1000.00');
+        $branch->update(['commission_rate' => '10.00']);
+
+        $uuid = (string) Str::uuid();
+
+        // Se entregan 1000 brutos con 10% de comisión (descuento 100, efectivo neto entregado 900)
+        $response = $this->actingAs($user, 'sanctum')
+            ->withHeader('Idempotency-Key', $uuid)
+            ->postJson('/api/v1/money-deliveries', [
+                'branch_id' => $branch->id,
+                'gross_amount' => '1000.00',
+                'commission_rate' => '10.00',
+                'commission_amount' => '100.00',
+                'amount' => '900.00',
+                'business_date' => '2026-09-26',
+                'reason' => 'Entrega de ganancia lunes con comisión aplicada',
+                'notes' => '10% comisión descontada',
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.gross_amount', '1000.00')
+            ->assertJsonPath('data.commission_rate', '10.00')
+            ->assertJsonPath('data.commission_amount', '100.00')
+            ->assertJsonPath('data.delivered_amount', '900.00');
+
+        // El balance de la banca debe quedar en 0.00 (-1000 + 900 entrega + 100 comisión = 0.00)
+        $this->assertEquals('0.00', (string) $branch->fresh()->current_balance);
+
+        // Caja solo debe disminuir por el dinero físico entregado: 5000 - 900 = 4100
+        $this->assertEquals('4100.00', (string) $company->fresh()->cash_balance);
+
+        // Se deben registrar dos asientos en el ledger de la banca: entrega y comisión
+        $this->assertDatabaseHas('ledger_entries', [
+            'company_id' => $company->id,
+            'branch_id' => $branch->id,
+            'entry_type' => 'money_delivery',
+            'signed_amount' => '900.00',
+        ]);
+
+        $this->assertDatabaseHas('ledger_entries', [
+            'company_id' => $company->id,
+            'branch_id' => $branch->id,
+            'entry_type' => 'delivery_commission',
+            'signed_amount' => '100.00',
+        ]);
+
+        // Movimiento de caja por 900
+        $this->assertDatabaseHas('cash_movements', [
+            'company_id' => $company->id,
+            'branch_id' => $branch->id,
+            'movement_type' => 'branch_delivery',
+            'amount' => '900.00',
+        ]);
+    }
+
     private function companyContext(string $cashBalance = '0.00'): array
     {
         $user = User::factory()->create();
