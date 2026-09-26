@@ -26,12 +26,19 @@ class AuthController extends Controller
             ]);
         }
 
+        $role = $user->companies()->wherePivot('status', 'active')->first()?->pivot?->role ?? 'collector';
+
         return response()->json([
             'success' => true,
             'message' => 'Sesión iniciada correctamente.',
             'data' => [
                 'token' => $user->createToken($credentials['device_name'])->plainTextToken,
-                'user' => $user->only(['id', 'name', 'email']),
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $role,
+                ],
             ],
         ]);
     }
@@ -49,10 +56,18 @@ class AuthController extends Controller
 
     public function me(Request $request): JsonResponse
     {
+        $user = $request->user();
+        $role = $user->companies()->wherePivot('status', 'active')->first()?->pivot?->role ?? 'collector';
+
         return response()->json([
             'success' => true,
             'message' => 'Usuario autenticado.',
-            'data' => $request->user()->only(['id', 'name', 'email']),
+            'data' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $role,
+            ],
         ]);
     }
 }
