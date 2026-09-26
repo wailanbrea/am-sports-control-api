@@ -125,6 +125,119 @@ class CollectionService
         });
     }
 
+    public function update(User $user, int $companyId, Collection $collection, array $data): Collection
+    {
+        return DB::transaction(function () use ($user, $companyId, $collection, $data) {
+            if ($collection->company_id !== $companyId) {
+                abort(404, 'Cobro no encontrado.');
+            }
+
+            if ($collection->status !== 'confirmed') {
+                throw ValidationException::withMessages(['status' => ['Solo se pueden editar cobros confirmados.']]);
+            }
+
+            $branch = Branch::query()
+                ->where('company_id', $companyId)
+                ->whereKey($collection->branch_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $oldAmount = (string) $collection->amount;
+            $newAmount = $this->normalizeAmount($data['amount']);
+            $oldPaymentMethod = $collection->payment_method;
+            $newPaymentMethod = $data['payment_method'];
+            $newBusinessDate = $data['business_date'];
+
+            // Delta in branch balance:
+            // Old collection reduced debt by $oldAmount.
+            // If new amount is higher (collected more), debt decreases further by delta.
+            // If new amount is lower (collected less), debt increases by -delta.
+            // Therefore: new_balance = current_balance - (newAmount - oldAmount).
+            $delta = bcsub($newAmount, $oldAmount, 2);
+            $newBranchBalance = bcsub((string) $branch->current_balance, $delta, 2);
+
+            $branch->update(['current_balance' => $newBranchBalance]);
+
+            // Update collection record
+            $collection->update([
+                'amount' => $newAmount,
+                'business_date' => $newBusinessDate,
+                'payment_method' => $newPaymentMethod,
+                'reference' => $data['reference'] ?? null,
+                'notes' => $data['notes'] ?? null,
+            ]);
+
+            // Update corresponding LedgerEntry
+            $ledgerEntry = LedgerEntry::query()
+                ->where('company_id', $companyId)
+                ->where('source_type', Collection::class)
+                ->where('source_id', $collection->id)
+                ->first();
+
+            if ($ledgerEntry) {
+                $newBalanceAfter = bcsub((string) $ledgerEntry->balance_before, $newAmount, 2);
+                $ledgerEntry->update([
+                    'signed_amount' => bcmul($newAmount, '-1', 2),
+                    'balance_after' => $newBalanceAfter,
+                    'business_date' => $newBusinessDate,
+                    'description' => 'Cobro modificado' . (! empty($data['reference']) ? ': '.$data['reference'] : ''),
+                ]);
+            }
+
+            // Adjust CashBox if payment method was or is cash
+            $cashMovement = \App\Models\CashMovement::query()
+                ->where('company_id', $companyId)
+                ->where('source_type', Collection::class)
+                ->where('source_id', $collection->id)
+                ->first();
+
+            $company = \App\Models\Company::query()->whereKey($companyId)->lockForUpdate()->firstOrFail();
+
+            if ($oldPaymentMethod === 'cash' && $newPaymentMethod === 'cash') {
+                if ($cashMovement) {
+                    $newCashBalance = bcadd((string) $company->cash_balance, $delta, 2);
+                    $cashMovement->update([
+                        'amount' => $newAmount,
+                        'signed_amount' => $newAmount,
+                        'balance_after' => bcadd((string) $cashMovement->balance_before, $newAmount, 2),
+                        'business_date' => $newBusinessDate,
+                        'reference' => $data['reference'] ?? null,
+                        'notes' => $data['notes'] ?? null,
+                    ]);
+                    $company->update(['cash_balance' => $newCashBalance]);
+                }
+            } elseif ($oldPaymentMethod === 'cash' && $newPaymentMethod !== 'cash') {
+                if ($cashMovement) {
+                    $newCashBalance = bcsub((string) $company->cash_balance, $oldAmount, 2);
+                    $cashMovement->delete();
+                    $company->update(['cash_balance' => $newCashBalance]);
+                }
+            } elseif ($oldPaymentMethod !== 'cash' && $newPaymentMethod === 'cash') {
+                $balanceBefore = (string) $company->cash_balance;
+                $balanceAfter = bcadd($balanceBefore, $newAmount, 2);
+                \App\Models\CashMovement::query()->create([
+                    'company_id' => $companyId,
+                    'branch_id' => $branch->id,
+                    'movement_type' => 'income',
+                    'amount' => $newAmount,
+                    'signed_amount' => $newAmount,
+                    'balance_before' => $balanceBefore,
+                    'balance_after' => $balanceAfter,
+                    'business_date' => $newBusinessDate,
+                    'reason' => 'Cobro modificado a efectivo',
+                    'reference' => $data['reference'] ?? null,
+                    'notes' => $data['notes'] ?? null,
+                    'source_type' => Collection::class,
+                    'source_id' => $collection->id,
+                    'created_by' => $user->id,
+                ]);
+                $company->update(['cash_balance' => $balanceAfter]);
+            }
+
+            return $collection->fresh();
+        });
+    }
+
     private function normalizeAmount(string $amount): string
     {
         if (! preg_match('/^\d+(?:\.\d{1,2})?$/', $amount)) {
@@ -138,3 +251,4 @@ class CollectionService
         return $whole.'.'.str_pad($fraction, 2, '0');
     }
 }
+

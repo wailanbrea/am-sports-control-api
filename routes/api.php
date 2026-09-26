@@ -27,10 +27,11 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     Route::get('/collections', [CollectionController::class, 'index']);
     Route::post('/collections', [CollectionController::class, 'store']); // Cobros: permitido para cobradores y admin
     Route::get('/dashboard', [AccountingReadController::class, 'dashboard']);
-    Route::get('/cash-box', [CashBoxController::class, 'show']);
 
-    // Admin-only endpoints (Los cobradores no tienen permiso de modificar nada)
+    // Admin-only endpoints (Los cobradores no tienen permiso de modificar nada ni de ver caja chica)
     Route::middleware('admin')->group(function () {
+        Route::get('/cash-box', [CashBoxController::class, 'show']);
+        Route::put('/collections/{collection}', [CollectionController::class, 'update']);
         Route::post('/branches', [BranchController::class, 'store']);
         Route::put('/branches/{branch}', [BranchController::class, 'update']);
         Route::delete('/branches/{branch}', [BranchController::class, 'destroy']);

@@ -41,6 +41,25 @@ class CollectionController extends Controller
         return response()->json(['success' => true, 'message' => 'Cobro registrado correctamente.', 'data' => $collection], 201);
     }
 
+    public function update(Request $request, int $collection, CollectionService $service): JsonResponse
+    {
+        $data = $request->validate([
+            'amount' => ['required', 'string', 'regex:/^\d+(?:\.\d{1,2})?$/'],
+            'business_date' => ['required', 'date'],
+            'payment_method' => ['required', 'in:cash,transfer,other'],
+            'reference' => ['nullable', 'string', 'max:100'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $companyId = $this->activeCompanyId($request);
+        $col = Collection::query()
+            ->where('company_id', $companyId)
+            ->findOrFail($collection);
+
+        $updated = $service->update($request->user(), $companyId, $col, $data);
+
+        return response()->json(['success' => true, 'message' => 'Cobro actualizado correctamente.', 'data' => $updated]);
+    }
+
     private function activeCompanyId(Request $request): int
     {
         $companyId = $request->user()->companies()->wherePivot('status', 'active')->value('companies.id');

@@ -155,4 +155,88 @@ class CollectorPermissionsTest extends TestCase
         $reverseResponse->assertForbidden()
             ->assertJsonPath('success', false);
     }
+
+    public function test_collector_cannot_view_cash_box_or_modify_collections(): void
+    {
+        [$collector, $company] = $this->collectorContext();
+        $branch = Branch::query()->create([
+            'company_id' => $company->id,
+            'code' => 'B-01',
+            'name' => 'Banca Centro',
+            'current_balance' => '1000.00',
+            'status' => 'active',
+        ]);
+
+        // Record a collection
+        $collectResponse = $this->actingAs($collector, 'sanctum')
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/collections', [
+                'branch_id' => $branch->id,
+                'amount' => '300.00',
+                'business_date' => now()->toDateString(),
+                'payment_method' => 'cash',
+            ]);
+        $collectionId = $collectResponse->json('data.id');
+
+        // 1. Collector CANNOT access cash box
+        $cashBoxResponse = $this->actingAs($collector, 'sanctum')->getJson('/api/v1/cash-box');
+        $cashBoxResponse->assertForbidden()
+            ->assertJsonPath('success', false);
+
+        // 2. Collector CANNOT update collection
+        $updateResponse = $this->actingAs($collector, 'sanctum')->putJson("/api/v1/collections/{$collectionId}", [
+            'amount' => '400.00',
+            'business_date' => now()->toDateString(),
+            'payment_method' => 'cash',
+        ]);
+        $updateResponse->assertForbidden()
+            ->assertJsonPath('success', false);
+    }
+
+    public function test_admin_can_update_collection_and_recalculate_balances(): void
+    {
+        $admin = User::factory()->create();
+        $company = Company::query()->create(['name' => 'BTM Contabilidad', 'cash_balance' => '5000.00']);
+        $admin->companies()->attach($company, ['role' => 'admin', 'status' => 'active']);
+
+        $branch = Branch::query()->create([
+            'company_id' => $company->id,
+            'code' => 'B-01',
+            'name' => 'Banca Centro',
+            'current_balance' => '1000.00',
+            'status' => 'active',
+        ]);
+
+        // Create collection of 300 in cash
+        $collectResponse = $this->actingAs($admin, 'sanctum')
+            ->withHeader('Idempotency-Key', (string) Str::uuid())
+            ->postJson('/api/v1/collections', [
+                'branch_id' => $branch->id,
+                'amount' => '300.00',
+                'business_date' => now()->toDateString(),
+                'payment_method' => 'cash',
+            ]);
+        $collectionId = $collectResponse->json('data.id');
+
+        // Initial branch balance: 1000 - 300 = 700.00
+        $this->assertEquals('700.00', $branch->fresh()->current_balance);
+        // Initial cash balance: 5000 + 300 = 5300.00
+        $this->assertEquals('5300.00', $company->fresh()->cash_balance);
+
+        // Admin updates collection to 450 in cash (delta +150)
+        $updateResponse = $this->actingAs($admin, 'sanctum')->putJson("/api/v1/collections/{$collectionId}", [
+            'amount' => '450.00',
+            'business_date' => now()->toDateString(),
+            'payment_method' => 'cash',
+            'reference' => 'Recibo Corregido #123',
+        ]);
+        $updateResponse->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.amount', '450.00');
+
+        // New branch balance: 700 - 150 = 550.00
+        $this->assertEquals('550.00', $branch->fresh()->current_balance);
+        // New cash balance: 5300 + 150 = 5450.00
+        $this->assertEquals('5450.00', $company->fresh()->cash_balance);
+    }
 }

@@ -111,29 +111,32 @@ class AccountingReadController extends Controller
             ->limit(10)
             ->get();
 
+        $role = $request->user()->companies()->wherePivot('status', 'active')->first()?->pivot?->role;
+        $isAdmin = ($role === 'admin');
+
         return $this->respond('Resumen obtenido correctamente.', [
             'receivable_total' => $receivableTotal,
-            'branch_credit_total' => $branchCreditTotal,
-            'net_position' => bcsub($receivableTotal, $branchCreditTotal, 2),
+            'branch_credit_total' => $isAdmin ? $branchCreditTotal : '0.00',
+            'net_position' => $isAdmin ? bcsub($receivableTotal, $branchCreditTotal, 2) : $receivableTotal,
             'collections_total' => $this->total(Collection::class, $companyId),
-            'advances_total' => $this->total(Advance::class, $companyId),
+            'advances_total' => $isAdmin ? $this->total(Advance::class, $companyId) : '0.00',
             'currency_code' => $company->currency_code ?: 'USD',
-            'cash_balance' => $company->cash_balance,
+            'cash_balance' => $isAdmin ? $company->cash_balance : '0.00',
             'active_branches_count' => $branches->count(),
             'positive_branches_count' => $positiveCount,
-            'negative_branches_count' => $negativeCount,
+            'negative_branches_count' => $isAdmin ? $negativeCount : 0,
             'zero_branches_count' => $zeroCount,
             'total_pending_to_collect' => $receivableTotal,
             'total_to_collect_next_monday' => $receivableTotal,
-            'total_money_delivered_this_week' => $moneyDeliveredWeek,
-            'total_money_delivered_this_month' => $moneyDeliveredMonth,
+            'total_money_delivered_this_week' => $isAdmin ? $moneyDeliveredWeek : '0.00',
+            'total_money_delivered_this_month' => $isAdmin ? $moneyDeliveredMonth : '0.00',
             'total_collected_this_week' => $collectedWeek,
             'total_collected_this_month' => $collectedMonth,
             'alerts' => [
                 'negative_branches' => [
-                    'count' => $negativeCount,
-                    'total_required' => $branchCreditTotal,
-                    'message' => "{$negativeCount} bancas requieren dinero.",
+                    'count' => $isAdmin ? $negativeCount : 0,
+                    'total_required' => $isAdmin ? $branchCreditTotal : '0.00',
+                    'message' => $isAdmin ? "{$negativeCount} bancas requieren dinero." : '',
                 ],
                 'pending_collections' => [
                     'count' => $positiveCount,
