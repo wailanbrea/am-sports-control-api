@@ -23,6 +23,7 @@ class BranchController extends Controller
             'created_by' => $request->user()->id,
             'current_balance' => '0.00',
         ]);
+        $branch->load('collector:id,name,email');
 
         return $this->respond('Banca creada correctamente.', $branch, 201);
     }
@@ -35,7 +36,7 @@ class BranchController extends Controller
 
         $branch->update($data);
 
-        return $this->respond('Banca actualizada correctamente.', $branch->fresh());
+        return $this->respond('Banca actualizada correctamente.', $branch->fresh()->load('collector:id,name,email'));
     }
 
     public function destroy(Request $request, int $branch): JsonResponse
@@ -95,6 +96,7 @@ class BranchController extends Controller
             'longitude' => ['nullable', 'numeric'],
             'collection_day' => ['nullable', 'string', 'max:50'],
             'commission_rate' => ['nullable', 'numeric', 'between:0,100'],
+            'collector_user_id' => ['nullable', 'integer', 'exists:users,id'],
             'status' => ['required', 'in:active,inactive'],
         ];
     }

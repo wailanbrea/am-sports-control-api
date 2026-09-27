@@ -13,11 +13,22 @@ class CollectionController extends Controller
     public function index(Request $request): JsonResponse
     {
         $companyId = $this->activeCompanyId($request);
-        $collections = Collection::query()
+        $role = $request->user()->companies()->wherePivot('status', 'active')->first()?->pivot?->role ?? 'collector';
+
+        $query = Collection::query()
             ->where('company_id', $companyId)
             ->orderByDesc('business_date')
-            ->orderByDesc('id')
-            ->get();
+            ->orderByDesc('id');
+
+        if ($role === 'collector') {
+            $assignedBranchIds = \App\Models\Branch::query()
+                ->where('company_id', $companyId)
+                ->where('collector_user_id', $request->user()->id)
+                ->pluck('id');
+            $query->whereIn('branch_id', $assignedBranchIds);
+        }
+
+        $collections = $query->get();
 
         return response()->json(['success' => true, 'message' => 'Cobros obtenidos correctamente.', 'data' => $collections]);
     }
@@ -35,6 +46,20 @@ class CollectionController extends Controller
         $companyId = $this->activeCompanyId($request);
         $key = $request->header('Idempotency-Key');
         abort_unless($key && preg_match('/^[0-9a-fA-F-]{36}$/', $key), 422, 'Idempotency-Key es obligatorio.');
+
+        $role = $request->user()->companies()->wherePivot('status', 'active')->first()?->pivot?->role ?? 'collector';
+        if ($role === 'collector') {
+            $branch = \App\Models\Branch::query()
+                ->where('company_id', $companyId)
+                ->findOrFail($data['branch_id']);
+
+            if ((int) $branch->collector_user_id !== (int) $request->user()->id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No tiene autorización para registrar cobros en esta banca porque no la tiene asignada.',
+                ], 403);
+            }
+        }
 
         $collection = $service->record($request->user(), $companyId, $data, $key);
 

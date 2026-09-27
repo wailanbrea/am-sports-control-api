@@ -33,6 +33,7 @@ class Branch extends Model
         'route',
         'operator_name',
         'status',
+        'collector_user_id',
         'current_balance',
         'commission_rate',
         'created_by',
@@ -51,6 +52,11 @@ class Branch extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    public function collector(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'collector_user_id');
     }
 
     public function collections(): HasMany
