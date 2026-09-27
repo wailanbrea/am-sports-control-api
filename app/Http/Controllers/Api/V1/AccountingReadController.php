@@ -43,10 +43,10 @@ class AccountingReadController extends Controller
             ->where('company_id', $companyId)
             ->with([
                 'collector:id,name,email',
-                'collections' => fn ($query) => $query->orderByDesc('business_date')->orderByDesc('id'),
-                'advances' => fn ($query) => $query->orderByDesc('business_date')->orderByDesc('id'),
+                'collections' => fn ($query) => $query->with('creator:id,name,email')->orderByDesc('business_date')->orderByDesc('id'),
+                'advances' => fn ($query) => $query->with('creator:id,name,email')->orderByDesc('business_date')->orderByDesc('id'),
                 'weeklySettlements' => fn ($query) => $query->orderByDesc('week_end')->orderByDesc('id'),
-                'ledger' => fn ($query) => $query->orderByDesc('business_date')->orderByDesc('id'),
+                'ledger' => fn ($query) => $query->with('creator:id,name,email')->orderByDesc('business_date')->orderByDesc('id'),
             ])
             ->findOrFail($branch);
 
@@ -63,6 +63,7 @@ class AccountingReadController extends Controller
     public function ledger(Request $request): JsonResponse
     {
         $entries = LedgerEntry::query()
+            ->with('creator:id,name,email')
             ->where('company_id', $this->activeCompanyId($request))
             ->orderByDesc('business_date')
             ->orderByDesc('id')
@@ -148,6 +149,7 @@ class AccountingReadController extends Controller
         $collectedMonth = (string) ($collectionsMonthQuery->sum('amount') ?: '0.00');
 
         $recentActivity = $recentActivityQuery
+            ->with('creator:id,name,email')
             ->orderByDesc('business_date')
             ->orderByDesc('id')
             ->limit(10)

@@ -31,6 +31,8 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     // Admin-only endpoints (Los cobradores no tienen permiso de modificar nada ni de ver caja chica)
     Route::middleware('admin')->group(function () {
         Route::get('/cash-box', [CashBoxController::class, 'show']);
+        Route::get('/cash-boxes', [CashBoxController::class, 'indexBoxes']);
+        Route::post('/cash-boxes', [CashBoxController::class, 'storeBox']);
         Route::put('/collections/{collection}', [CollectionController::class, 'update']);
         Route::post('/branches', [BranchController::class, 'store']);
         Route::put('/branches/{branch}', [BranchController::class, 'update']);
@@ -53,4 +55,3 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
         Route::post('/ledger-entries/{ledgerEntry}/reverse', [LedgerEntryController::class, 'reverse']);
     });
 });
-

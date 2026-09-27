@@ -79,6 +79,26 @@ class MoneyDeliveryService
                 }
             }
 
+            // Determinar caja chica de origen
+            $cashBoxId = $data['cash_box_id'] ?? null;
+            $cashBox = null;
+            if (class_exists(CashBox::class)) {
+                if ($cashBoxId) {
+                    $cashBox = CashBox::query()
+                        ->where('company_id', $companyId)
+                        ->whereKey($cashBoxId)
+                        ->lockForUpdate()
+                        ->first();
+                } else {
+                    $cashBox = CashBox::query()
+                        ->where('company_id', $companyId)
+                        ->where('is_default', true)
+                        ->lockForUpdate()
+                        ->first()
+                        ?? CashBox::query()->where('company_id', $companyId)->first();
+                }
+            }
+
             // Registrar entrega de dinero
             $delivery = MoneyDelivery::query()->create([
                 'company_id' => $companyId,
@@ -112,7 +132,7 @@ class MoneyDeliveryService
                 'balance_before' => $runningBalance,
                 'balance_after' => $balanceAfterDelivery,
                 'business_date' => $data['business_date'],
-                'description' => 'Dinero llevado a la banca: ' . ($data['reason'] ?? 'Cubrir pérdida'),
+                'description' => 'Dinero llevado a la banca' . ($cashBox ? " desde {$cashBox->name}" : '') . ': ' . ($data['reason'] ?? 'Cubrir pérdida'),
                 'created_by' => $user->id,
             ]);
             $runningBalance = $balanceAfterDelivery;
@@ -137,19 +157,26 @@ class MoneyDeliveryService
 
             $branch->update(['current_balance' => $runningBalance]);
 
-            // Salida física de caja (solo el efectivo real entregado)
+            // Salida de caja chica y compañía
             $company = Company::query()->whereKey($companyId)->lockForUpdate()->firstOrFail();
             $cashBefore = (string) $company->cash_balance;
             $cashAfter = bcsub($cashBefore, $amount, 2);
 
+            $boxBefore = $cashBox ? (string) $cashBox->balance : $cashBefore;
+            $boxAfter = $cashBox ? bcsub($boxBefore, $amount, 2) : $cashAfter;
+            if ($cashBox) {
+                $cashBox->update(['balance' => $boxAfter]);
+            }
+
             CashMovement::query()->create([
                 'company_id' => $companyId,
+                'cash_box_id' => $cashBox?->id,
                 'branch_id' => $branch->id,
                 'movement_type' => 'branch_delivery',
                 'amount' => $amount,
                 'signed_amount' => bcmul($amount, '-1', 2),
-                'balance_before' => $cashBefore,
-                'balance_after' => $cashAfter,
+                'balance_before' => $boxBefore,
+                'balance_after' => $boxAfter,
                 'business_date' => $data['business_date'],
                 'reason' => 'Dinero llevado a ' . $branch->name . ': ' . ($data['reason'] ?? 'Pérdida'),
                 'notes' => $data['notes'] ?? null,
