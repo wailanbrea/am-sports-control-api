@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 class CashMovement extends Model
 {
     protected $fillable = [
-        'company_id', 'branch_id', 'movement_type', 'amount', 'signed_amount',
+        'company_id', 'cash_box_id', 'branch_id', 'movement_type', 'amount', 'signed_amount',
         'balance_before', 'balance_after', 'business_date', 'reason', 'reference',
         'notes', 'source_type', 'source_id', 'created_by',
     ];
@@ -28,6 +28,11 @@ class CashMovement extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    public function cashBox(): BelongsTo
+    {
+        return $this->belongsTo(CashBox::class);
     }
 
     public function branch(): BelongsTo

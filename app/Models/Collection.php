@@ -15,4 +15,19 @@ class Collection extends Model
     {
         return ['amount' => 'decimal:2', 'business_date' => 'date', 'confirmed_at' => 'datetime'];
     }
+
+    public function creator(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function branch(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
+    }
+
+    public function company(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Company::class);
+    }
 }

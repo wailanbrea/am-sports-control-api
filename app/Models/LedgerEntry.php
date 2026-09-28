@@ -22,4 +22,14 @@ class LedgerEntry extends Model
             'reversed_at' => 'datetime',
         ];
     }
+
+    public function creator(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function branch(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
+    }
 }

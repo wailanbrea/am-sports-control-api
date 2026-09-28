@@ -61,7 +61,21 @@ class WeeklySettlementService
                     'commission_rate' => ['El porcentaje de comisión no puede ser mayor que 100.'],
                 ]);
             }
-            $commission = $this->roundAmount(bcdiv(bcmul($sales, $commissionRate, 4), '100', 4));
+
+            // Ganancia bruta de la banca: Ventas - Premios
+            $grossProfit = bcsub($sales, $prizes, 2);
+
+            // Regla de negocio:
+            // "Pago de comisiones se descuentan de las ganancias si no ganan no se paga. No de caja chica."
+            // 1. Si la banca no genera ganancia (sales <= prizes), comisión = 0.00.
+            // 2. Si genera ganancia, la comisión se descuenta de dicha ganancia (tope máximo la ganancia bruta).
+            if (bccomp($grossProfit, '0.00', 2) <= 0) {
+                $commission = '0.00';
+            } else {
+                $calculatedCommission = $this->roundAmount(bcdiv(bcmul($sales, $commissionRate, 4), '100', 4));
+                $commission = bccomp($calculatedCommission, $grossProfit, 2) > 0 ? $grossProfit : $calculatedCommission;
+            }
+
             $cashDelivered = $this->normalizeAmount($data['cash_delivered_amount']);
             if (bccomp($sales, '0.00', 2) === 0
                 && bccomp($prizes, '0.00', 2) === 0

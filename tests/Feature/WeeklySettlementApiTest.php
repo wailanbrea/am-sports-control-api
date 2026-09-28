@@ -123,6 +123,33 @@ class WeeklySettlementApiTest extends TestCase
         ]);
     }
 
+    public function test_commission_is_zero_when_branch_leaves_no_profit(): void
+    {
+        [$user, , $branch] = $this->context();
+
+        // Ventas 1000, Premios 1500 (Pérdida de 500)
+        // Regla: No ganan, no se paga comisión (0.00)
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/weekly-settlements', [
+            'branch_id' => $branch->id,
+            'week_start' => '2026-09-21',
+            'week_end' => '2026-09-27',
+            'sales_amount' => '1000.00',
+            'prizes_amount' => '1500.00',
+            'commission_rate' => '20.00',
+            'cash_delivered_amount' => '0.00',
+        ], ['Idempotency-Key' => 'ffffffff-ffff-4fff-8fff-ffffffffffff'])
+            ->assertCreated()
+            ->assertJsonPath('data.commission_rate', '20.00')
+            ->assertJsonPath('data.commission_amount', '0.00')
+            ->assertJsonPath('data.weekly_balance', '-500.00');
+
+        // No debe haberse creado asiento contable de comisión
+        $this->assertDatabaseMissing('ledger_entries', [
+            'branch_id' => $branch->id,
+            'entry_type' => 'weekly_commission',
+        ]);
+    }
+
     /** @return array{User, Company, Branch} */
     private function context(): array
     {

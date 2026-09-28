@@ -76,6 +76,7 @@ class CashBoxController extends Controller
         $companyId = $this->activeCompanyId($request);
         $company = Company::query()->findOrFail($companyId);
         $entries = CashMovement::query()
+            ->with(['branch:id,code,name', 'createdBy:id,name,email'])
             ->where('company_id', $companyId)
             ->orderByDesc('business_date')
             ->orderByDesc('id')
