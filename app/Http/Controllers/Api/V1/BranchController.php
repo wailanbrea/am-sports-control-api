@@ -49,13 +49,28 @@ class BranchController extends Controller
                 ->lockForUpdate()
                 ->findOrFail($branch);
 
-            if ($branch->ledger()->exists()) {
-                throw new ConflictHttpException('No se puede eliminar una banca con movimientos contables.');
+            if (bccomp((string) $branch->current_balance, '0.00', 2) !== 0) {
+                throw new ConflictHttpException('No se puede eliminar una banca con saldo distinto de cero ($' . number_format((float) $branch->current_balance, 2) . '). Ajuste el saldo a cero antes de eliminar.');
             }
 
-            if (bccomp((string) $branch->current_balance, '0.00', 2) !== 0) {
-                throw new ConflictHttpException('No se puede eliminar una banca con saldo distinto de cero.');
+            // Validar que no tenga transacciones financieras confirmadas reales
+            $hasConfirmedCollections = \App\Models\Collection::where('branch_id', $branch->id)->where('status', 'confirmed')->exists();
+            $hasConfirmedDeliveries = \App\Models\MoneyDelivery::where('branch_id', $branch->id)->where('status', 'confirmed')->exists();
+            $hasSettlements = \App\Models\WeeklySettlement::where('branch_id', $branch->id)->exists();
+            $hasConfirmedAdvances = \App\Models\Advance::where('branch_id', $branch->id)->where('status', 'confirmed')->exists();
+
+            if ($hasConfirmedCollections || $hasConfirmedDeliveries || $hasSettlements || $hasConfirmedAdvances) {
+                throw new ConflictHttpException('No se puede eliminar una banca con cobros, entregas o cuadres confirmados.');
             }
+
+            // Limpieza segura en cascada de registros de prueba, cancelados o reversados
+            \App\Models\ManualResult::where('branch_id', $branch->id)->delete();
+            \App\Models\CashMovement::where('branch_id', $branch->id)->delete();
+            \App\Models\LedgerEntry::where('branch_id', $branch->id)->update(['reversal_of_entry_id' => null]);
+            \App\Models\LedgerEntry::where('branch_id', $branch->id)->delete();
+            \App\Models\Collection::where('branch_id', $branch->id)->delete();
+            \App\Models\MoneyDelivery::where('branch_id', $branch->id)->delete();
+            \App\Models\Advance::where('branch_id', $branch->id)->delete();
 
             $branch->delete();
         });

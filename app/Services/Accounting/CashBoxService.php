@@ -3,6 +3,7 @@
 namespace App\Services\Accounting;
 
 use App\Models\Branch;
+use App\Models\CashBox;
 use App\Models\CashMovement;
 use App\Models\Company;
 use App\Models\IdempotencyKey;
@@ -83,8 +84,31 @@ class CashBoxService
             }
 
             $balanceAfter = bcadd($balanceBefore, $signedAmount, 2);
+
+            $cashBox = null;
+            if (! empty($data['cash_box_id'])) {
+                $cashBox = CashBox::query()
+                    ->where('company_id', $companyId)
+                    ->whereKey($data['cash_box_id'])
+                    ->lockForUpdate()
+                    ->first();
+            }
+            if (! $cashBox) {
+                $cashBox = CashBox::query()
+                    ->where('company_id', $companyId)
+                    ->where('is_default', true)
+                    ->lockForUpdate()
+                    ->first()
+                    ?? CashBox::query()->where('company_id', $companyId)->first();
+            }
+            if ($cashBox) {
+                $boxAfter = bcadd((string) $cashBox->balance, $signedAmount, 2);
+                $cashBox->update(['balance' => $boxAfter]);
+            }
+
             $movement = CashMovement::query()->create([
                 'company_id' => $companyId,
+                'cash_box_id' => $cashBox?->id,
                 'branch_id' => $branchId,
                 'movement_type' => $movementType,
                 'amount' => $amount,

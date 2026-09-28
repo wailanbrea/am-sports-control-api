@@ -42,6 +42,7 @@ class CollectionController extends Controller
             'payment_method' => ['required', 'in:cash,transfer,other'],
             'reference' => ['nullable', 'string', 'max:100'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'force_overcollection' => ['nullable', 'boolean'],
         ]);
         $companyId = $this->activeCompanyId($request);
         $key = $request->header('Idempotency-Key');

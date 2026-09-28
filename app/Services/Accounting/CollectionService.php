@@ -45,7 +45,11 @@ class CollectionService
             if (bccomp($amount, '0.00', 2) <= 0) {
                 throw ValidationException::withMessages(['amount' => ['El monto debe ser mayor que cero.']]);
             }
-            if (bccomp($amount, (string) $branch->current_balance, 2) > 0) {
+
+            $userRole = $user->companies()->wherePivot('status', 'active')->first()?->pivot?->role ?? 'collector';
+            $allowOvercollection = ($userRole === 'admin') || (! empty($data['force_overcollection']));
+
+            if (! $allowOvercollection && bccomp($amount, (string) $branch->current_balance, 2) > 0) {
                 throw ValidationException::withMessages(['amount' => ['El cobro supera el saldo pendiente y requiere autorización especial.']]);
             }
 

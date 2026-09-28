@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\CashBox;
 use App\Models\CashMovement;
 use App\Models\Company;
 use App\Services\Accounting\CashBoxService;
@@ -13,6 +14,63 @@ use Illuminate\Validation\ValidationException;
 
 class CashBoxController extends Controller
 {
+    public function indexBoxes(Request $request): JsonResponse
+    {
+        $companyId = $this->activeCompanyId($request);
+        $company = Company::query()->findOrFail($companyId);
+        $boxes = CashBox::query()
+            ->where('company_id', $companyId)
+            ->orderByDesc('is_default')
+            ->orderBy('id')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cajas chicas obtenidas correctamente.',
+            'data' => [
+                'total_balance' => (string) $company->cash_balance,
+                'currency_code' => $company->currency_code,
+                'boxes' => $boxes,
+            ],
+        ]);
+    }
+
+    public function storeBox(Request $request): JsonResponse
+    {
+        $companyId = $this->activeCompanyId($request);
+        $company = Company::query()->findOrFail($companyId);
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'initial_balance' => ['nullable', 'string', 'regex:/^\d+(?:\.\d{1,2})?$/'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'is_default' => ['nullable', 'boolean'],
+        ]);
+
+        $initialBalance = $data['initial_balance'] ?? '0.00';
+        $isDefault = $data['is_default'] ?? false;
+
+        if ($isDefault) {
+            CashBox::query()->where('company_id', $companyId)->update(['is_default' => false]);
+        }
+
+        $box = CashBox::query()->create([
+            'company_id' => $companyId,
+            'name' => $data['name'],
+            'description' => $data['description'] ?? null,
+            'balance' => $initialBalance,
+            'currency_code' => $company->currency_code,
+            'is_default' => $isDefault,
+            'status' => 'active',
+            'created_by' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Caja chica creada correctamente.',
+            'data' => $box,
+        ], 201);
+    }
+
     public function show(Request $request): JsonResponse
     {
         $companyId = $this->activeCompanyId($request);
@@ -61,6 +119,7 @@ class CashBoxController extends Controller
             'business_date' => ['required', 'date'],
             'reason' => ['required', 'string', 'max:255'],
             'branch_id' => [$requiresBranch ? 'required' : 'nullable', 'integer'],
+            'cash_box_id' => ['nullable', 'integer', 'exists:cash_boxes,id'],
             'reference' => ['nullable', 'string', 'max:100'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
