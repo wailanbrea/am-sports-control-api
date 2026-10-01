@@ -85,23 +85,29 @@ class WeeklySettlementService
                 ]);
             }
 
-            // Resultado neto operativo de la semana: Ventas - Premios - Comisión + Efectivo entregado (si hubo)
-            $netWeeklyOperation = bcadd(bcsub(bcsub($sales, $prizes, 2), $commission, 2), $cashDelivered, 2);
+            // Resultado operativo de la semana (ventas vs premios y comisión):
+            $operatingResult = bcsub(bcsub($sales, $prizes, 2), $commission, 2);
 
-            // Regla de negocio de consorcios: Si la semana cierra en pérdida y se solicita absorber la pérdida
-            // (absorb_loss = true), el consorcio absorbe el déficit de modo que la semana termina en 0.00
-            // y no se le carga como deuda al vendedor/rifero.
-            $isLoss = bccomp($netWeeklyOperation, '0.00', 2) < 0;
             $absorbLoss = isset($data['absorb_loss'])
                 ? filter_var($data['absorb_loss'], FILTER_VALIDATE_BOOLEAN)
                 : false;
 
+            // En consorcios de bancas: si la banca pagó más premios que ventas ($operatingResult < 0),
+            // o si el dinero llevado de caja chica no se recuperó con las ventas ($netWithCash < 0):
+            $isOperatingLoss = bccomp($operatingResult, '0.00', 2) < 0;
+            $netWithCash = bccomp($prizes, '0.00', 2) > 0 ? $operatingResult : bcsub($operatingResult, $cashDelivered, 2);
+            $isLoss = $isOperatingLoss || bccomp($netWithCash, '0.00', 2) < 0;
+
             $lossAbsorbedAmount = '0.00';
             if ($isLoss && $absorbLoss) {
-                $lossAbsorbedAmount = bcmul($netWeeklyOperation, '-1', 2);
+                // El consorcio absorbe la pérdida de la semana.
+                // El balance semanal para el vendedor cierra en 0.00 y no se le suma deuda a su cuenta histórica.
+                $deficit = $isOperatingLoss ? $operatingResult : $netWithCash;
+                $lossAbsorbedAmount = bcmul($deficit, '-1', 2);
                 $weeklyBalance = '0.00';
                 $settlementType = 'loss_absorbed';
             } else {
+                $netWeeklyOperation = bcadd($operatingResult, $cashDelivered, 2);
                 $weeklyBalance = $netWeeklyOperation;
                 $settlementType = bccomp($weeklyBalance, '0.00', 2) >= 0 ? 'gain' : 'loss_unabsorbed';
             }
