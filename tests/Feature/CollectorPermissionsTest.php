@@ -32,6 +32,7 @@ class CollectorPermissionsTest extends TestCase
             'name' => 'Banca Centro',
             'current_balance' => '1000.00',
             'status' => 'active',
+            'collector_user_id' => $collector->id,
         ]);
 
         // 1. Collector CAN read branches
@@ -165,6 +166,7 @@ class CollectorPermissionsTest extends TestCase
             'name' => 'Banca Centro',
             'current_balance' => '1000.00',
             'status' => 'active',
+            'collector_user_id' => $collector->id,
         ]);
 
         // Record a collection

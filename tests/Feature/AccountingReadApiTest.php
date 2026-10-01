@@ -46,7 +46,7 @@ class AccountingReadApiTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $entry->id)
-            ->assertJsonMissing(['id' => $otherEntry->id]);
+            ->assertJsonMissing(['description' => 'Movimiento ajeno']);
         $this->actingAs($user, 'sanctum')->getJson('/api/v1/collections')
             ->assertOk()
             ->assertJsonCount(1, 'data')

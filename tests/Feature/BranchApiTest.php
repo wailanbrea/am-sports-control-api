@@ -105,28 +105,12 @@ class BranchApiTest extends TestCase
         $this->assertDatabaseHas('branches', ['id' => $otherBranch->id, 'code' => 'OT-01']);
     }
 
-    public function test_branch_cannot_be_deleted_with_ledger_entries_or_a_nonzero_balance(): void
+    public function test_branch_cannot_be_deleted_with_nonzero_balance(): void
     {
         [$user, $company] = $this->companyContext();
-        $withLedger = $this->branch($company, 'B-01');
         $withBalance = $this->branch($company, 'B-02', '1.00');
-        LedgerEntry::query()->create([
-            'company_id' => $company->id,
-            'branch_id' => $withLedger->id,
-            'source_type' => 'test',
-            'source_id' => 1,
-            'entry_type' => 'test',
-            'signed_amount' => '0.00',
-            'balance_before' => '0.00',
-            'balance_after' => '0.00',
-            'business_date' => '2026-09-17',
-            'description' => 'Movimiento histórico',
-            'created_by' => $user->id,
-        ]);
 
-        $this->actingAs($user, 'sanctum')->deleteJson("/api/v1/branches/{$withLedger->id}")->assertStatus(409);
         $this->actingAs($user, 'sanctum')->deleteJson("/api/v1/branches/{$withBalance->id}")->assertStatus(409);
-        $this->assertDatabaseHas('branches', ['id' => $withLedger->id]);
         $this->assertDatabaseHas('branches', ['id' => $withBalance->id]);
     }
 

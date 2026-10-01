@@ -134,6 +134,20 @@ class BranchController extends Controller
             ->findOrFail($branchId);
     }
 
+    public function assignCollector(Request $request, int $branch): JsonResponse
+    {
+        $companyId = $this->activeCompanyId($request);
+        $branchModel = $this->branchForCompany($companyId, $branch);
+
+        $data = $request->validate([
+            'collector_user_id' => ['nullable', 'integer', 'exists:users,id'],
+        ]);
+
+        $branchModel->update(['collector_user_id' => $data['collector_user_id']]);
+
+        return $this->respond('Cobrador asignado correctamente a la banca.', $branchModel);
+    }
+
     public function absorbLoss(Request $request, int $branch, \App\Services\Accounting\WeeklyLossAbsorptionService $service): JsonResponse
     {
         $companyId = $this->activeCompanyId($request);

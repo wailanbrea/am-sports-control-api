@@ -27,6 +27,7 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     Route::get('/collections', [CollectionController::class, 'index']);
     Route::post('/collections', [CollectionController::class, 'store']); // Cobros: permitido para cobradores y admin
     Route::get('/dashboard', [AccountingReadController::class, 'dashboard']);
+    Route::get('/ledger', [AccountingReadController::class, 'ledger']);
 
     // Admin-only endpoints (Los cobradores no tienen permiso de modificar nada ni de ver caja chica)
     Route::middleware('admin')->group(function () {
@@ -36,9 +37,9 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
         Route::put('/collections/{collection}', [CollectionController::class, 'update']);
         Route::post('/branches', [BranchController::class, 'store']);
         Route::put('/branches/{branch}', [BranchController::class, 'update']);
+        Route::post('/branches/{branch}/assign-collector', [BranchController::class, 'assignCollector']);
         Route::delete('/branches/{branch}', [BranchController::class, 'destroy']);
         Route::post('/branches/{branch}/absorb-loss', [BranchController::class, 'absorbLoss']);
-        Route::get('/ledger', [AccountingReadController::class, 'ledger']);
         Route::post('/cash-box/income', [CashBoxController::class, 'income']);
         Route::post('/cash-box/expenses', [CashBoxController::class, 'expense']);
         Route::post('/cash-box/branch-transfers', [CashBoxController::class, 'branchTransfer']);
@@ -53,6 +54,7 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
         Route::get('/collectors', [\App\Http\Controllers\Api\V1\CollectorController::class, 'index']);
         Route::post('/collectors', [\App\Http\Controllers\Api\V1\CollectorController::class, 'store']);
         Route::put('/collectors/{collector}', [\App\Http\Controllers\Api\V1\CollectorController::class, 'update']);
+        Route::post('/collectors/{collector}/assign-branches', [\App\Http\Controllers\Api\V1\CollectorController::class, 'assignBranches']);
         Route::post('/ledger-entries/{ledgerEntry}/reverse', [LedgerEntryController::class, 'reverse']);
     });
 });

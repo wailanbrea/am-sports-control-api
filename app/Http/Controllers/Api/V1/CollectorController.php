@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
 use App\Models\Company;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -17,6 +18,14 @@ class CollectorController extends Controller
     {
         $companyId = $this->activeCompanyId($request);
 
+        $assignedBranchCounts = Branch::query()
+            ->where('company_id', $companyId)
+            ->where('status', 'active')
+            ->whereNotNull('collector_user_id')
+            ->select('collector_user_id', DB::raw('count(*) as total'))
+            ->groupBy('collector_user_id')
+            ->pluck('total', 'collector_user_id');
+
         $collectors = User::query()
             ->whereHas('companies', function ($query) use ($companyId) {
                 $query->where('companies.id', $companyId);
@@ -25,7 +34,7 @@ class CollectorController extends Controller
                 $query->where('companies.id', $companyId);
             }])
             ->get()
-            ->map(function (User $user) {
+            ->map(function (User $user) use ($assignedBranchCounts) {
                 $pivot = $user->companies->first()?->pivot;
                 return [
                     'id' => $user->id,
@@ -33,6 +42,7 @@ class CollectorController extends Controller
                     'email' => $user->email,
                     'role' => $pivot?->role ?? 'collector',
                     'status' => $pivot?->status ?? 'active',
+                    'assigned_branches_count' => (int) ($assignedBranchCounts[$user->id] ?? 0),
                     'created_at' => $user->created_at?->toIso8601String(),
                 ];
             });
@@ -41,6 +51,48 @@ class CollectorController extends Controller
             'success' => true,
             'message' => 'Cobradores y usuarios obtenidos correctamente.',
             'data' => $collectors,
+        ]);
+    }
+
+    public function assignBranches(Request $request, int $collector): JsonResponse
+    {
+        $companyId = $this->activeCompanyId($request);
+        $user = User::query()
+            ->whereHas('companies', fn ($q) => $q->where('companies.id', $companyId))
+            ->findOrFail($collector);
+
+        $data = $request->validate([
+            'branch_ids' => ['present', 'array'],
+            'branch_ids.*' => ['integer', Rule::exists('branches', 'id')->where('company_id', $companyId)],
+        ]);
+
+        $selectedIds = array_map('intval', $data['branch_ids']);
+
+        DB::transaction(function () use ($companyId, $user, $selectedIds) {
+            // Desasignar las bancas de este cobrador que no estén en selectedIds
+            Branch::query()
+                ->where('company_id', $companyId)
+                ->where('collector_user_id', $user->id)
+                ->whereNotIn('id', $selectedIds)
+                ->update(['collector_user_id' => null]);
+
+            // Asignar las bancas seleccionadas a este cobrador
+            if (!empty($selectedIds)) {
+                Branch::query()
+                    ->where('company_id', $companyId)
+                    ->whereIn('id', $selectedIds)
+                    ->update(['collector_user_id' => $user->id]);
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Bancas asignadas correctamente al cobrador.',
+            'data' => [
+                'collector_id' => $user->id,
+                'assigned_count' => count($selectedIds),
+                'branch_ids' => $selectedIds,
+            ],
         ]);
     }
 
@@ -87,7 +139,7 @@ class CollectorController extends Controller
         ], 201);
     }
 
-    public function update(Request $request, int $id): JsonResponse
+    public function update(Request $request, int $collector): JsonResponse
     {
         $companyId = $this->activeCompanyId($request);
 
@@ -95,7 +147,7 @@ class CollectorController extends Controller
             ->whereHas('companies', function ($query) use ($companyId) {
                 $query->where('companies.id', $companyId);
             })
-            ->findOrFail($id);
+            ->findOrFail($collector);
 
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
