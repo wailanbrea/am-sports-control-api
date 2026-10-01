@@ -65,18 +65,19 @@ class WeeklySettlementService
             // Ganancia bruta de la banca: Ventas - Premios
             $grossProfit = bcsub($sales, $prizes, 2);
 
-            // Regla de negocio:
-            // "Pago de comisiones se descuentan de las ganancias si no ganan no se paga. No de caja chica."
-            // 1. Si la banca no genera ganancia (sales <= prizes), comisión = 0.00.
-            // 2. Si genera ganancia, la comisión se descuenta de dicha ganancia (tope máximo la ganancia bruta).
-            if (bccomp($grossProfit, '0.00', 2) <= 0) {
-                $commission = '0.00';
+            // Comisión de la banca: Se calcula sobre las ventas brutas según el porcentaje de la banca o el monto directo
+            if (isset($data['commission_amount']) && bccomp((string) $data['commission_amount'], '0.00', 2) > 0) {
+                $commission = $this->normalizeAmount($data['commission_amount']);
+            } elseif (bccomp($commissionRate, '0.00', 2) > 0) {
+                $commission = $this->roundAmount(bcdiv(bcmul($sales, $commissionRate, 4), '100', 4));
             } else {
-                $calculatedCommission = $this->roundAmount(bcdiv(bcmul($sales, $commissionRate, 4), '100', 4));
-                $commission = bccomp($calculatedCommission, $grossProfit, 2) > 0 ? $grossProfit : $calculatedCommission;
+                $commission = '0.00';
             }
 
-            $cashDelivered = $this->normalizeAmount($data['cash_delivered_amount']);
+            $cashDelivered = isset($data['cash_delivered_amount'])
+                ? $this->normalizeAmount($data['cash_delivered_amount'])
+                : '0.00';
+
             if (bccomp($sales, '0.00', 2) === 0
                 && bccomp($prizes, '0.00', 2) === 0
                 && bccomp($cashDelivered, '0.00', 2) === 0) {
@@ -85,31 +86,24 @@ class WeeklySettlementService
                 ]);
             }
 
-            // Resultado operativo de la semana (ventas vs premios y comisión):
-            $operatingResult = bcsub(bcsub($sales, $prizes, 2), $commission, 2);
+            // Resultado del juego (hoja de MegaLottery): Ventas - Premios - Comisión
+            $gameResult = bcsub(bcsub($sales, $prizes, 2), $commission, 2);
 
-            $absorbLoss = isset($data['absorb_loss'])
-                ? filter_var($data['absorb_loss'], FILTER_VALIDATE_BOOLEAN)
-                : false;
+            // Resultado neto semanal considerando si se aportó efectivo para premios:
+            $netWithCash = bcadd($gameResult, $cashDelivered, 2);
 
-            // En consorcios de bancas: si la banca pagó más premios que ventas ($operatingResult < 0),
-            // o si el dinero llevado de caja chica no se recuperó con las ventas ($netWithCash < 0):
-            $isOperatingLoss = bccomp($operatingResult, '0.00', 2) < 0;
-            $netWithCash = bccomp($prizes, '0.00', 2) > 0 ? $operatingResult : bcsub($operatingResult, $cashDelivered, 2);
-            $isLoss = $isOperatingLoss || bccomp($netWithCash, '0.00', 2) < 0;
-
-            $lossAbsorbedAmount = '0.00';
-            if ($isLoss && $absorbLoss) {
-                // El consorcio absorbe la pérdida de la semana.
-                // El balance semanal para el vendedor cierra en 0.00 y no se le suma deuda a su cuenta histórica.
-                $deficit = $isOperatingLoss ? $operatingResult : $netWithCash;
-                $lossAbsorbedAmount = bcmul($deficit, '-1', 2);
+            if (bccomp($netWithCash, '0.00', 2) >= 0) {
+                // El vendedor tiene dinero en mano de las ventas netas para entregarle al consorcio
+                $weeklyBalance = $netWithCash;
+                $lossAbsorbedAmount = '0.00';
+                $settlementType = 'gain';
+            } else {
+                // Hay déficit neto: El consorcio absorbe la pérdida de la semana.
+                // El balance semanal para el vendedor cierra en 0.00 (no se le carga deuda adicional).
+                // El cuadre semanal NO saca dinero de Caja Chica (el dinero para premios se registró cuando se llevó).
+                $lossAbsorbedAmount = bcmul($netWithCash, '-1', 2);
                 $weeklyBalance = '0.00';
                 $settlementType = 'loss_absorbed';
-            } else {
-                $netWeeklyOperation = bcadd($operatingResult, $cashDelivered, 2);
-                $weeklyBalance = $netWeeklyOperation;
-                $settlementType = bccomp($weeklyBalance, '0.00', 2) >= 0 ? 'gain' : 'loss_unabsorbed';
             }
 
             $balanceBefore = (string) $branch->current_balance;
@@ -162,25 +156,6 @@ class WeeklySettlementService
             }
 
             $branch->update(['current_balance' => $balanceAfter]);
-
-            if (bccomp($cashDelivered, '0.00', 2) > 0) {
-                app(CashBoxService::class)->record(
-                    $user,
-                    $companyId,
-                    [
-                        'movement_type' => 'branch_transfer',
-                        'amount' => $cashDelivered,
-                        'business_date' => $data['week_end'],
-                        'reason' => 'Efectivo entregado según cuadre semanal',
-                        'branch_id' => $branch->id,
-                        'reference' => 'Cuadre semanal #'.$settlement->id,
-                        'notes' => $data['notes'] ?? null,
-                        'adjust_branch_balance' => false,
-                    ],
-                    sourceType: WeeklySettlement::class,
-                    sourceId: $settlement->id,
-                );
-            }
 
             IdempotencyKey::query()->create([
                 'company_id' => $companyId,
