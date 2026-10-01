@@ -35,6 +35,7 @@ class Branch extends Model
         'status',
         'collector_user_id',
         'current_balance',
+        'historical_debt',
         'commission_rate',
         'created_by',
     ];
@@ -43,6 +44,7 @@ class Branch extends Model
     {
         return [
             'current_balance' => 'decimal:2',
+            'historical_debt' => 'decimal:2',
             'commission_rate' => 'decimal:2',
             'latitude' => 'decimal:7',
             'longitude' => 'decimal:7',

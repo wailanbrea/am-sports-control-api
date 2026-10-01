@@ -85,7 +85,27 @@ class WeeklySettlementService
                 ]);
             }
 
-            $weeklyBalance = bcadd(bcsub(bcsub($sales, $prizes, 2), $commission, 2), $cashDelivered, 2);
+            // Resultado neto operativo de la semana: Ventas - Premios - Comisión + Efectivo entregado (si hubo)
+            $netWeeklyOperation = bcadd(bcsub(bcsub($sales, $prizes, 2), $commission, 2), $cashDelivered, 2);
+
+            // Regla de negocio de consorcios: Si la semana cierra en pérdida y se solicita absorber la pérdida
+            // (absorb_loss = true), el consorcio absorbe el déficit de modo que la semana termina en 0.00
+            // y no se le carga como deuda al vendedor/rifero.
+            $isLoss = bccomp($netWeeklyOperation, '0.00', 2) < 0;
+            $absorbLoss = isset($data['absorb_loss'])
+                ? filter_var($data['absorb_loss'], FILTER_VALIDATE_BOOLEAN)
+                : false;
+
+            $lossAbsorbedAmount = '0.00';
+            if ($isLoss && $absorbLoss) {
+                $lossAbsorbedAmount = bcmul($netWeeklyOperation, '-1', 2);
+                $weeklyBalance = '0.00';
+                $settlementType = 'loss_absorbed';
+            } else {
+                $weeklyBalance = $netWeeklyOperation;
+                $settlementType = bccomp($weeklyBalance, '0.00', 2) >= 0 ? 'gain' : 'loss_unabsorbed';
+            }
+
             $balanceBefore = (string) $branch->current_balance;
             $balanceAfter = bcadd($balanceBefore, $weeklyBalance, 2);
 
@@ -99,15 +119,17 @@ class WeeklySettlementService
                 'commission_rate' => $commissionRate,
                 'commission_amount' => $commission,
                 'cash_delivered_amount' => $cashDelivered,
+                'loss_absorbed_amount' => $lossAbsorbedAmount,
                 'weekly_balance' => $weeklyBalance,
                 'balance_before' => $balanceBefore,
                 'balance_after' => $balanceAfter,
                 'notes' => $data['notes'] ?? null,
-                'status' => match (bccomp($balanceAfter, '0.00', 2)) {
+                'status' => $settlementType === 'loss_absorbed' ? 'settled' : match (bccomp($balanceAfter, '0.00', 2)) {
                     -1 => 'negative_balance',
                     0 => 'settled',
                     default => 'pending',
                 },
+                'settlement_type' => $settlementType,
                 'idempotency_key' => $idempotencyKey,
                 'created_by' => $user->id,
             ]);
@@ -117,9 +139,21 @@ class WeeklySettlementService
             $runningBalance = bcadd($runningBalance, $sales, 2);
             $this->createEntry($settlement, $user, bcmul($prizes, '-1', 2), $runningBalance, 'weekly_prizes', 'Premios pagados registrados');
             $runningBalance = bcsub($runningBalance, $prizes, 2);
-            $this->createEntry($settlement, $user, bcmul($commission, '-1', 2), $runningBalance, 'weekly_commission', 'Comisión semanal de la banca');
-            $runningBalance = bcsub($runningBalance, $commission, 2);
-            $this->createEntry($settlement, $user, $cashDelivered, $runningBalance, 'weekly_cash_delivered', 'Efectivo entregado a la banca');
+
+            if (bccomp($commission, '0.00', 2) > 0) {
+                $this->createEntry($settlement, $user, bcmul($commission, '-1', 2), $runningBalance, 'weekly_commission', 'Comisión semanal de la banca');
+                $runningBalance = bcsub($runningBalance, $commission, 2);
+            }
+
+            if (bccomp($cashDelivered, '0.00', 2) > 0) {
+                $this->createEntry($settlement, $user, $cashDelivered, $runningBalance, 'weekly_cash_delivered', 'Fondo de caja chica aportado para premios');
+                $runningBalance = bcadd($runningBalance, $cashDelivered, 2);
+            }
+
+            if (bccomp($lossAbsorbedAmount, '0.00', 2) > 0) {
+                $this->createEntry($settlement, $user, $lossAbsorbedAmount, $runningBalance, 'weekly_loss_absorbed', 'Pérdida semanal asumida por el consorcio (Semana a Cero)');
+                $runningBalance = bcadd($runningBalance, $lossAbsorbedAmount, 2);
+            }
 
             $branch->update(['current_balance' => $balanceAfter]);
 

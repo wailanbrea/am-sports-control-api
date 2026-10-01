@@ -37,6 +37,7 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
         Route::post('/branches', [BranchController::class, 'store']);
         Route::put('/branches/{branch}', [BranchController::class, 'update']);
         Route::delete('/branches/{branch}', [BranchController::class, 'destroy']);
+        Route::post('/branches/{branch}/absorb-loss', [BranchController::class, 'absorbLoss']);
         Route::get('/ledger', [AccountingReadController::class, 'ledger']);
         Route::post('/cash-box/income', [CashBoxController::class, 'income']);
         Route::post('/cash-box/expenses', [CashBoxController::class, 'expense']);

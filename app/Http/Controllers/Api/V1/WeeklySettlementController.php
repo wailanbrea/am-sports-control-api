@@ -40,6 +40,7 @@ class WeeklySettlementController extends Controller
             'prizes_amount' => ['required', 'string', 'regex:/^\d+(?:\.\d{1,2})?$/'],
             'commission_rate' => ['required', 'string', 'regex:/^\d{1,3}(?:\.\d{1,2})?$/'],
             'cash_delivered_amount' => ['required', 'string', 'regex:/^\d+(?:\.\d{1,2})?$/'],
+            'absorb_loss' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
         $key = $request->header('Idempotency-Key');

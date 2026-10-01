@@ -98,6 +98,7 @@ class MoneyDeliveryController extends Controller
             'business_date' => ['required', 'date'],
             'reason' => ['required', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'adjust_branch_balance' => ['nullable', 'boolean'],
         ]);
 
         $companyId = $this->activeCompanyId($request);

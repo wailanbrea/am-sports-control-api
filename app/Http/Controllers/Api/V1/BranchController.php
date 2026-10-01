@@ -134,6 +134,47 @@ class BranchController extends Controller
             ->findOrFail($branchId);
     }
 
+    public function absorbLoss(Request $request, int $branch, \App\Services\Accounting\WeeklyLossAbsorptionService $service): JsonResponse
+    {
+        $companyId = $this->activeCompanyId($request);
+        $branchModel = $this->branchForCompany($companyId, $branch);
+
+        $data = $request->validate([
+            'amount' => ['nullable', 'string', 'regex:/^\d+(?:\.\d{1,2})?$/'],
+            'business_date' => ['nullable', 'date'],
+            'cash_box_id' => ['nullable', 'integer', 'exists:cash_boxes,id'],
+            'deduct_cash_box' => ['nullable', 'boolean'],
+            'reason' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $key = $request->header('Idempotency-Key');
+        if (! $key || ! \Illuminate\Support\Str::isUuid($key)) {
+            $key = (string) \Illuminate\Support\Str::uuid();
+        }
+
+        if (empty($data['amount'])) {
+            if (bccomp((string) $branchModel->current_balance, '0.00', 2) < 0) {
+                $data['amount'] = number_format(abs((float) $branchModel->current_balance), 2, '.', '');
+            } else {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'amount' => ['La banca no tiene saldo negativo para absorber automáticamente. Especifique el monto.'],
+                ]);
+            }
+        }
+
+        $data['branch_id'] = $branchModel->id;
+
+        $result = $service->absorb(
+            $request->user(),
+            $companyId,
+            $data,
+            $key,
+        );
+
+        return $this->respond('Pérdida semanal absorbida correctamente. La banca ha quedado en cero.', $result);
+    }
+
     private function respond(string $message, mixed $data, int $status = 200): JsonResponse
     {
         return response()->json(['success' => true, 'message' => $message, 'data' => $data], $status);

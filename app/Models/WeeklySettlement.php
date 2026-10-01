@@ -9,8 +9,8 @@ class WeeklySettlement extends \Illuminate\Database\Eloquent\Model
     protected $fillable = [
         'company_id', 'branch_id', 'week_start', 'week_end', 'sales_amount',
         'prizes_amount', 'commission_rate', 'commission_amount',
-        'cash_delivered_amount', 'weekly_balance',
-        'balance_before', 'balance_after', 'notes', 'status', 'idempotency_key',
+        'cash_delivered_amount', 'loss_absorbed_amount', 'weekly_balance',
+        'balance_before', 'balance_after', 'notes', 'status', 'settlement_type', 'idempotency_key',
         'created_by',
     ];
 
@@ -24,6 +24,7 @@ class WeeklySettlement extends \Illuminate\Database\Eloquent\Model
             'commission_rate' => 'decimal:2',
             'commission_amount' => 'decimal:2',
             'cash_delivered_amount' => 'decimal:2',
+            'loss_absorbed_amount' => 'decimal:2',
             'weekly_balance' => 'decimal:2',
             'balance_before' => 'decimal:2',
             'balance_after' => 'decimal:2',

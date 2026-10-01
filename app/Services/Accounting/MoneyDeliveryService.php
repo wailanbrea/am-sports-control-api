@@ -117,35 +117,70 @@ class MoneyDeliveryService
                 'created_by' => $user->id,
             ]);
 
-            // Compensación en la banca: entregar dinero físico y/o aplicar comisión cancela o reduce la deuda
+            // Compensación en la banca: entregar dinero físico cancela o reduce un saldo negativo.
+            // Si la banca ya está en cero o positiva (o tiene deuda histórica), la entrega de dinero para premios
+            // NO debe aumentar la deuda del rifero.
             $branchBalanceBefore = (string) $branch->current_balance;
             $runningBalance = $branchBalanceBefore;
 
-            $balanceAfterDelivery = bcadd($runningBalance, $amount, 2);
+            $adjustBranchBalance = isset($data['adjust_branch_balance'])
+                ? filter_var($data['adjust_branch_balance'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)
+                : null;
+
+            if ($adjustBranchBalance === true) {
+                $effectiveAmount = $amount;
+                $effectiveCommission = $commissionAmount;
+            } elseif ($adjustBranchBalance === false) {
+                $effectiveAmount = '0.00';
+                $effectiveCommission = '0.00';
+            } else {
+                if (bccomp($branchBalanceBefore, '0.00', 2) < 0) {
+                    $negativeDeficit = bcmul($branchBalanceBefore, '-1', 2);
+                    $totalBenefit = bcadd($amount, $commissionAmount, 2);
+                    if (bccomp($totalBenefit, $negativeDeficit, 2) > 0) {
+                        $effectiveAmount = bccomp($amount, $negativeDeficit, 2) > 0 ? $negativeDeficit : $amount;
+                        $remainingDeficit = bcsub($negativeDeficit, $effectiveAmount, 2);
+                        $effectiveCommission = bccomp($commissionAmount, $remainingDeficit, 2) > 0 ? $remainingDeficit : $commissionAmount;
+                    } else {
+                        $effectiveAmount = $amount;
+                        $effectiveCommission = $commissionAmount;
+                    }
+                } else {
+                    $effectiveAmount = '0.00';
+                    $effectiveCommission = '0.00';
+                }
+            }
+
+            $balanceAfterDelivery = bcadd($runningBalance, $effectiveAmount, 2);
+            $entryType = bccomp($effectiveAmount, '0.00', 2) > 0 ? 'money_delivery' : 'prize_fund_delivery';
+            $description = bccomp($effectiveAmount, '0.00', 2) > 0
+                ? ('Dinero llevado a la banca' . ($cashBox ? " desde {$cashBox->name}" : '') . ': ' . ($data['reason'] ?? 'Cubrir déficit operativo'))
+                : ('Fondo de premios llevado a la banca desde Caja Chica (no incrementa deuda): $' . number_format((float) $amount, 2) . ($cashBox ? " [{$cashBox->name}]" : '') . ' - ' . ($data['reason'] ?? 'Premios'));
+
             LedgerEntry::query()->create([
                 'company_id' => $companyId,
                 'branch_id' => $branch->id,
                 'source_type' => MoneyDelivery::class,
                 'source_id' => $delivery->id,
-                'entry_type' => 'money_delivery',
-                'signed_amount' => $amount,
+                'entry_type' => $entryType,
+                'signed_amount' => $effectiveAmount,
                 'balance_before' => $runningBalance,
                 'balance_after' => $balanceAfterDelivery,
                 'business_date' => $data['business_date'],
-                'description' => 'Dinero llevado a la banca' . ($cashBox ? " desde {$cashBox->name}" : '') . ': ' . ($data['reason'] ?? 'Cubrir pérdida'),
+                'description' => $description,
                 'created_by' => $user->id,
             ]);
             $runningBalance = $balanceAfterDelivery;
 
-            if (bccomp($commissionAmount, '0.00', 2) > 0) {
-                $balanceAfterCommission = bcadd($runningBalance, $commissionAmount, 2);
+            if (bccomp($effectiveCommission, '0.00', 2) > 0) {
+                $balanceAfterCommission = bcadd($runningBalance, $effectiveCommission, 2);
                 LedgerEntry::query()->create([
                     'company_id' => $companyId,
                     'branch_id' => $branch->id,
                     'source_type' => MoneyDelivery::class,
                     'source_id' => $delivery->id,
                     'entry_type' => 'delivery_commission',
-                    'signed_amount' => $commissionAmount,
+                    'signed_amount' => $effectiveCommission,
                     'balance_before' => $runningBalance,
                     'balance_after' => $balanceAfterCommission,
                     'business_date' => $data['business_date'],
